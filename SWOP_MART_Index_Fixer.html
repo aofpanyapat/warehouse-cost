@@ -1,0 +1,290 @@
+<!DOCTYPE html>
+<html lang="th">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>SWOP MART — Index Fixer</title>
+<script src="https://cdnjs.cloudflare.com/ajax/libs/jszip/3.10.1/jszip.min.js"></script>
+<style>
+  *{box-sizing:border-box}
+  body{margin:0;background:#07182a;color:#eef8ff;font-family:system-ui,-apple-system,"Sarabun",sans-serif;min-height:100vh;display:grid;place-items:center;padding:24px}
+  .card{width:min(760px,100%);background:#0d2743;border:1px solid #28557b;border-radius:22px;padding:26px;box-shadow:0 25px 70px rgba(0,0,0,.35)}
+  h1{font-size:24px;margin:0 0 8px}
+  p{color:#b8cbe0;line-height:1.65}
+  .drop{border:2px dashed #55e7ff;border-radius:18px;padding:24px;text-align:center;margin:22px 0;background:#081f36}
+  input[type=file]{max-width:100%;color:#fff}
+  button{border:0;border-radius:13px;padding:12px 18px;font-weight:800;cursor:pointer;background:#55e7ff;color:#04111d;font-size:15px}
+  button:disabled{opacity:.45;cursor:not-allowed}
+  .status{margin-top:18px;padding:14px;border-radius:14px;background:#071a2d;white-space:pre-wrap;font-family:ui-monospace,Consolas,monospace;font-size:13px;line-height:1.6}
+  .ok{color:#69ff9b}.bad{color:#ff7c89}.warn{color:#ffd166}
+  ul{color:#d7e7f5;line-height:1.8}
+  code{color:#ffd166}
+</style>
+</head>
+<body>
+<div class="card">
+  <h1>SWOP MART — แก้ index.html อัตโนมัติ</h1>
+  <p>เลือกไฟล์ <code>index (17).html</code> ตัวเดิม ระบบจะตรวจและแก้เฉพาะจุดที่ตกลงไว้ โดยไม่แตะ UI/ฟังก์ชันอื่น แล้วสร้างไฟล์ ZIP ที่มี <code>index.html</code> พร้อมอัปโหลดขึ้น GitHub</p>
+
+  <ul>
+    <li>Ageing Excel เลือกชีต <b>Import_เข้าเว็บแอป</b> อัตโนมัติ และรองรับ <b>ASN_Raw + Withdraw_Raw</b></li>
+    <li>IMEI พบใน Withdraw → หยุด Ageing ที่ <b>วันที่เบิกครั้งแรก</b></li>
+    <li>Volume/เดือน → Auto-save ลง Supabase ระหว่างกรอก</li>
+    <li>ย้ายปุ่ม <b>ลบข้อมูลทั้งหมด</b> มาอยู่ข้างปุ่มเพิ่ม IMEI</li>
+    <li>แก้ข้อความอธิบาย Logic Ageing ให้ตรงกับกฎใหม่</li>
+  </ul>
+
+  <div class="drop">
+    <input id="file" type="file" accept=".html,.htm">
+  </div>
+  <button id="go" disabled>แก้ไฟล์และสร้าง ZIP</button>
+  <div id="status" class="status">รอเลือกไฟล์...</div>
+</div>
+
+<script>
+const fileEl = document.getElementById('file');
+const go = document.getElementById('go');
+const statusEl = document.getElementById('status');
+fileEl.addEventListener('change', ()=>{ go.disabled = !fileEl.files.length; });
+
+function downloadBlob(blob, filename){
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement('a');
+  a.href = url; a.download = filename;
+  document.body.appendChild(a); a.click(); a.remove();
+  setTimeout(()=>URL.revokeObjectURL(url), 2000);
+}
+
+function replaceRequired(src, regex, replacement, label, report){
+  const before = src;
+  const out = src.replace(regex, replacement);
+  if(out === before) throw new Error('หาโค้ดเดิมไม่เจอ: ' + label + '\\nไฟล์อาจไม่ใช่ index (17).html เวอร์ชันที่ตรวจไว้');
+  report.push('✓ ' + label);
+  return out;
+}
+
+function patchIndex(src){
+  const report = [];
+  let out = src;
+
+  // 1) Withdraw: any match closes ageing at first withdrawal date.
+  out = replaceRequired(
+    out,
+    /const withdrawItems = Object\.keys\(withdrawDates\)\.map\(imei=>\{\s*const dates = withdrawDates\[imei\]\.sort\(\);\s*const isSingle = dates\.length === 1;\s*return \{ imei, withdrawCount: dates\.length, removedDate: isSingle \? dates\[0\] : '' \};\s*\}\);/,
+`const withdrawItems = Object.keys(withdrawDates).map(imei=>{
+        const dates = [...new Set(withdrawDates[imei])].sort();
+        // Business rule: ถ้า IMEI นี้พบใน Withdraw อย่างน้อย 1 ครั้ง
+        // ให้หยุด Ageing ที่วันที่เบิกครั้งแรกทันที
+        return { imei, withdrawCount: dates.length, removedDate: dates.length ? dates[0] : '' };
+      });`,
+    'Logic Withdraw → หยุด Ageing วันที่เบิกครั้งแรก',
+    report
+  );
+
+  // 2) Excel: choose correct sheet instead of always first sheet.
+  out = replaceRequired(
+    out,
+    /const buf = await file\.arrayBuffer\(\);\s*const wb = XLSX\.read\(buf, \{ type:'array', cellDates:true \}\);\s*const sheet = wb\.Sheets\[wb\.SheetNames\[0\]\];\s*parsedRows = XLSX\.utils\.sheet_to_json\(sheet, \{ defval:'' \}\);/,
+`const buf = await file.arrayBuffer();
+        const wb = XLSX.read(buf, { type:'array', cellDates:true });
+        const sheetToRows = (sheetName)=>XLSX.utils.sheet_to_json(wb.Sheets[sheetName], { defval:'' });
+
+        // เลือก Sheet ที่ออกแบบไว้สำหรับเว็บก่อน
+        const importSheet = wb.SheetNames.find(n=>String(n).trim().toLowerCase()==='import_เข้าเว็บแอป');
+        const asnSheet = wb.SheetNames.find(n=>String(n).trim().toLowerCase()==='asn_raw');
+        const withdrawSheet = wb.SheetNames.find(n=>String(n).trim().toLowerCase()==='withdraw_raw');
+
+        if(importSheet){
+          parsedRows = sheetToRows(importSheet);
+        } else if(asnSheet && withdrawSheet){
+          // ถ้า Workbook เก็บ ASN และ Withdraw แยกชีต ให้รวมข้อมูลก่อน Map IMEI
+          parsedRows = [...sheetToRows(asnSheet), ...sheetToRows(withdrawSheet)];
+        } else {
+          // Fallback: ไล่หา Sheet แรกที่มีโครงสร้างข้อมูลที่ระบบรองรับ
+          parsedRows = [];
+          for(const sheetName of wb.SheetNames){
+            const rows = sheetToRows(sheetName);
+            if(!rows.length) continue;
+            const keys = Object.keys(rows[0]||{}).map(k=>String(k).trim().toLowerCase());
+            const looksAsnWithdraw = keys.includes('imei') && keys.includes('status') && keys.includes('when');
+            const looksPrecomputed = keys.includes('imei') && keys.includes('entry_date');
+            const looksWms = keys.includes('imei') && (
+              keys.includes('wh received date') ||
+              keys.includes('received_date') ||
+              keys.includes('receiveddate') ||
+              keys.includes('วันที่รับเข้า')
+            );
+            if(looksAsnWithdraw || looksPrecomputed || looksWms){
+              parsedRows = rows;
+              break;
+            }
+          }
+          if(!parsedRows.length){
+            throw new Error('ไม่พบ Sheet ที่มีข้อมูล Ageing ที่รองรับ (ต้องมี IMEI + Entry_Date หรือ IMEI + Status + When หรือ IMEI + WH Received Date)');
+          }
+        }`,
+    'Excel Ageing เลือก Sheet อัตโนมัติ',
+    report
+  );
+
+  // 3) Withdraw apply/update block and counters.
+  out = out.replace(
+    /let asnCount = 0, withdrawSingleCount = 0, withdrawMultiCount = 0;/,
+    `let asnCount = 0, withdrawMatchedCount = 0;`
+  );
+  if(out.includes('withdrawMatchedCount')) report.push('✓ ปรับตัวนับ Withdraw');
+
+  out = replaceRequired(
+    out,
+    /\/\/ 2\) ไฟล์ Withdraw -> เบิกครั้งเดียวปิดรอบ, เบิกหลายครั้งเคลียร์ removedDate ให้นับต่อเนื่อง\s*withdrawItems\.forEach\(it=>\{\s*const rec = getOrInit\(it\.imei\);\s*rec\.removedDate = it\.removedDate; \/\/ '' ถ้าเบิกหลายครั้ง, มีค่าถ้าเบิกครั้งเดียว\s*if\(it\.withdrawCount === 1\) withdrawSingleCount\+\+; else withdrawMultiCount\+\+;\s*\}\);/,
+`// 2) ไฟล์ Withdraw -> ถ้าเจอ IMEI เดียวกัน ให้ปิดรอบที่วันที่เบิกครั้งแรก
+        withdrawItems.forEach(it=>{
+          const rec = getOrInit(it.imei);
+          if(it.removedDate){
+            // ถ้ามี removedDate เดิม ให้เก็บวันที่ที่เร็วกว่า เพื่อไม่ให้ Ageing ถูกยืดออก
+            rec.removedDate = !rec.removedDate || it.removedDate < rec.removedDate ? it.removedDate : rec.removedDate;
+            withdrawMatchedCount++;
+          }
+        });`,
+    'Map Withdraw เข้ากับ IMEI และปิดรอบ',
+    report
+  );
+
+  out = replaceRequired(
+    out,
+    /` — ASN: \$\{asnCount\} เครื่อง, เบิกครั้งเดียว\(ปิดรอบ\): \$\{withdrawSingleCount\} เครื่อง, เบิกหลายครั้ง\(นับต่อเนื่อง\): \$\{withdrawMultiCount\} เครื่อง`/,
+    '` — ASN: ${asnCount} เครื่อง, IMEI ที่พบใน Withdraw และปิดรอบ: ${withdrawMatchedCount} เครื่อง`',
+    'ข้อความสรุปผล Import Ageing',
+    report
+  );
+
+  // 4) Volume auto-save with debounce.
+  out = replaceRequired(
+    out,
+    /document\.querySelectorAll\('\[data-rc-volume\]'\)\.forEach\(el=>\{\s*el\.onchange = async \(\)=>\{\s*const act = state\.activities\.find\(a=>a\.id===el\.dataset\.rcVolume\);\s*if\(!act\) return;\s*act\.monthlyVolume = Number\(el\.value\)\|\|0;\s*try\{\s*await sbw\(sb\.from\('activities'\)\.update\(activityToRow\(act\)\)\.eq\('id', act\.id\)\);\s*render\(\); showToast\('อัปเดต Volume แล้ว'\);\s*\}catch\(e\)\{ console\.error\(e\); showToast\(`บันทึกไม่สำเร็จ: \$\{e && e\.message \? e\.message : 'ลองใหม่อีกครั้ง'\}`\); \}\s*\};\s*\}\);/,
+`const volumeSaveTimers = {};
+  document.querySelectorAll('[data-rc-volume]').forEach(el=>{
+    const saveVolume = async ()=>{
+      const act = state.activities.find(a=>a.id===el.dataset.rcVolume);
+      if(!act) return;
+      const value = Number(el.value)||0;
+      act.monthlyVolume = value;
+      try{
+        // อัปเดตเฉพาะ monthly_volume ลดความเสี่ยงเขียน field อื่นทับโดยไม่จำเป็น
+        await sbw(sb.from('activities').update({ monthly_volume:value }).eq('id', act.id));
+        showToast('บันทึก Volume แล้ว');
+      }catch(e){
+        console.error(e);
+        showToast(\`บันทึก Volume ไม่สำเร็จ: \${e && e.message ? e.message : 'ลองใหม่อีกครั้ง'}\`);
+      }
+    };
+    el.oninput = ()=>{
+      const act = state.activities.find(a=>a.id===el.dataset.rcVolume);
+      if(act) act.monthlyVolume = Number(el.value)||0;
+      clearTimeout(volumeSaveTimers[el.dataset.rcVolume]);
+      volumeSaveTimers[el.dataset.rcVolume] = setTimeout(saveVolume, 500);
+    };
+    el.onchange = saveVolume;
+    el.onblur = saveVolume;
+  });`,
+    'Volume/เดือน Auto-save ลง Supabase',
+    report
+  );
+
+  // 5) Move delete-all button next to Add IMEI, remove old duplicate position.
+  out = replaceRequired(
+    out,
+    /<div class="row" style="margin-top:8px">\s*<button class="add-item-records-btn" data-activity-for-item="\$\{a\.id\}">เพิ่มรายการ IMEI<\/button>\s*<\/div>\s*\n\s*<div class="row" style="margin-top:16px;justify-content:space-between;align-items:center">\s*<div class="hint" style="margin:0">รายการที่บันทึกไว้ \(\$\{recordCount\} รายการ, \$\{count\} ชิ้น\)<\/div>\s*\$\{recordCount > 0 \? `<button class="danger ghost delete-all-items-btn" data-activity-for-item="\$\{a\.id\}">🗑️ ลบทั้งหมด \(\$\{recordCount\} รายการ\)<\/button>` : ''\}\s*<\/div>/,
+`<div class="row" style="margin-top:8px">
+            <button class="add-item-records-btn" data-activity-for-item="\${a.id}">เพิ่มรายการ IMEI</button>
+            \${recordCount > 0 ? \`<button class="danger ghost delete-all-items-btn" data-activity-for-item="\${a.id}">🗑️ ลบข้อมูลทั้งหมด (\${recordCount} รายการ)</button>\` : ''}
+          </div>
+
+          <div class="row" style="margin-top:16px;justify-content:space-between;align-items:center">
+            <div class="hint" style="margin:0">รายการที่บันทึกไว้ (\${recordCount} รายการ, \${count} ชิ้น)</div>
+          </div>`,
+    'ย้ายปุ่มลบ IMEI ทั้งหมดมาไว้ข้างปุ่มเพิ่ม IMEI',
+    report
+  );
+
+  // 6) Update explanatory text wherever it appears.
+  const oldRule = '(เบิกครั้งเดียว = ปิดรอบ, เบิกหลายครั้ง = นับต่อเนื่องถึงวันนี้ อัตโนมัติ)';
+  const newRule = '(เมื่อ IMEI เดียวกันพบใน Withdraw = หยุด Ageing ที่วันที่เบิกครั้งแรกทันที)';
+  let textCount = 0;
+  while(out.includes(oldRule)){
+    out = out.replace(oldRule, newRule);
+    textCount++;
+  }
+  report.push('✓ แก้ข้อความ Logic Ageing ' + textCount + ' จุด');
+
+  // 7) Add a small version marker to make deployment verification easy.
+  const marker = '<!-- SWOP_MART_FIX_2026-08-31: ageing-first-withdraw + sheet-auto-detect + volume-autosave + imei-delete-button -->';
+  if(!out.includes('SWOP_MART_FIX_2026-08-31')){
+    out = out.replace('<head>', '<head>\\n' + marker);
+  }
+  report.push('✓ เพิ่ม version marker สำหรับเช็กไฟล์บน GitHub');
+
+  return {out, report};
+}
+
+go.addEventListener('click', async ()=>{
+  const file = fileEl.files[0];
+  if(!file) return;
+  go.disabled = true;
+  statusEl.textContent = 'กำลังอ่านและตรวจไฟล์...';
+  try{
+    const src = await file.text();
+    if(!src.includes('storageAgeingBillForRange') || !src.includes('data-rc-volume')){
+      throw new Error('ไฟล์นี้ไม่ตรงกับ index (17).html เวอร์ชัน SWOP MART ที่ตรวจไว้');
+    }
+    const {out, report} = patchIndex(src);
+
+    // Basic sanity checks after patching
+    const required = [
+      'SWOP_MART_FIX_2026-08-31',
+      'withdrawMatchedCount',
+      "monthly_volume:value",
+      "import_เข้าเว็บแอป",
+      'ลบข้อมูลทั้งหมด'
+    ];
+    const missing = required.filter(x=>!out.includes(x));
+    if(missing.length) throw new Error('ตรวจหลังแก้ไม่ผ่าน: ' + missing.join(', '));
+
+    const notes = [
+      'SWOP MART Warehouse Cost — Fixed index.html',
+      'วันที่แก้: 2026-08-31',
+      '',
+      ...report,
+      '',
+      'วิธีใช้:',
+      '1) แตก ZIP',
+      '2) นำ index.html ไปแทน index.html เดิมใน GitHub branch main',
+      '3) Commit changes',
+      '4) รอ GitHub Pages deploy',
+      '5) เปิดเว็บแล้วกด Ctrl+F5',
+      '',
+      'Supabase prerequisite:',
+      '- item_records ต้องมีคอลัมน์ is_samsung_mue1 boolean (ผู้ใช้รัน SQL เพิ่มแล้ว)'
+    ].join('\\n');
+
+    if(window.JSZip){
+      const zip = new JSZip();
+      zip.file('index.html', out);
+      zip.file('FIX_NOTES.txt', notes);
+      const blob = await zip.generateAsync({type:'blob', compression:'DEFLATE', compressionOptions:{level:6}});
+      downloadBlob(blob, 'warehouse-cost-fixed.zip');
+      statusEl.innerHTML = '<span class="ok">สำเร็จ</span>\\n' + report.join('\\n') + '\\n\\nดาวน์โหลด warehouse-cost-fixed.zip แล้ว';
+    }else{
+      downloadBlob(new Blob([out],{type:'text/html;charset=utf-8'}), 'index.html');
+      statusEl.innerHTML = '<span class="warn">JSZip โหลดไม่สำเร็จ จึงดาวน์โหลด index.html โดยตรง</span>\\n' + report.join('\\n');
+    }
+  }catch(err){
+    console.error(err);
+    statusEl.innerHTML = '<span class="bad">แก้ไฟล์ไม่สำเร็จ</span>\\n' + (err.message || err);
+  }finally{
+    go.disabled = false;
+  }
+});
+</script>
+</body>
+</html>
