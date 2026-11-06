@@ -305,3 +305,44 @@ canvas{filter:drop-shadow(0 0 12px rgba(85,231,255,.08));}
 a.tab,a.tab:link,a.tab:visited{text-decoration:none;color:var(--text);display:flex}
 a.tab.active{color:var(--cyan)}
 button:disabled{opacity:.45;cursor:not-allowed}
+
+/* Formal navigation and proposed labour rate card. */
+@media screen {
+  body { background:#0c1726; }
+  body::before, body::after, .header::before, .header::after,
+  .sidebar::before, .header h1::before { display:none; }
+  .header, .sidebar { background:#122236; border-radius:14px; box-shadow:none; }
+  .header h1 { text-shadow:none; }
+  .tab { border-radius:8px; }
+  a.tab.active { background:#dceaff; color:#143456; box-shadow:none; }
+  a.tab:focus-visible { outline:2px solid var(--blue); outline-offset:3px; }
+  .sidebar { max-height:calc(100dvh - 36px); overflow-y:auto; }
+  .sidebar-footer { display:none; }
+  .rate-proposal { margin-bottom:28px; padding:20px; border:1px solid var(--line-strong); border-radius:12px; background:var(--panel-2); }
+  .rate-proposal h2 { margin:0 0 8px; }
+  .rate-proposal-scroll { overflow-x:auto; margin-top:18px; }
+  .rate-proposal table { min-width:700px; width:100%; }
+  .rate-proposal th { white-space:normal; }
+  .rate-proposal tfoot { font-weight:700; }
+  .proposed-price { color:var(--cyan); font-weight:700; }
+  .rate-proposal-status { padding:12px; border-left:3px solid var(--yellow); background:var(--panel); }
+}
+@media screen and (min-width:761px) {
+  .workspace { grid-template-columns:230px minmax(0,1fr); }
+  .sidebar { position:sticky; top:18px; }
+  .tabs { display:flex; flex-direction:column; }
+}
+@media screen and (max-width:760px) {
+  .workspace { grid-template-columns:145px minmax(0,1fr); gap:10px; }
+  .app { padding:12px 8px 40px; }
+  .sidebar { position:sticky; top:8px; padding:8px; max-height:calc(100dvh - 16px); }
+  .sidebar-brand { padding:6px 4px 10px; }
+  .sidebar-brand .desc, .sidebar-brand .eyebrow { display:none; }
+  .tabs { display:flex; flex-direction:column; }
+  .tab { padding:9px 6px; font-size:12px; min-height:44px; overflow-wrap:anywhere; }
+  .tab::before { display:none; }
+  .content-shell { overflow-x:auto; }
+  .header { padding:18px; }
+  .header h1 { font-size:26px; }
+  .rate-proposal { padding:12px; }
+}
