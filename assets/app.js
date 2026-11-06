@@ -1397,6 +1397,37 @@ function buildInvoiceStorageDetailPage(pageNo, totalPages, ageingBill, billingLa
     </div>`;
 }
 
+// Rate proposal transcribed from the user's labour-cost reference.
+// Separate from persisted activity prices until legacy Return records are mapped.
+const LABOUR_RATE_PROPOSAL = [
+  {name:'การรับสินค้าเข้า', regular:0, temp:2, minutes:2, cost:6.91},
+  {name:'การเตรียมสินค้าให้ฝ่าย QC', regular:0, temp:2, minutes:1, cost:3.46},
+  {name:'การรับคืนสินค้าจาก QC เข้า Bin Location พร้อมขาย', regular:0, temp:2, minutes:1, cost:3.46},
+  {name:'การเตรียมสินค้าให้ฝ่ายขาย', regular:1, temp:2, minutes:2, cost:12.01},
+  {name:'การรับสินค้าคืนจากฝ่ายขาย', regular:0, temp:2, minutes:1, cost:3.46}
+];
+function proposedSellingPrice(cost){
+  // Round UP to the nearest satang so the margin remains at least 35%.
+  return Math.ceil(Math.round(cost * 100) * 100 / 65) / 100;
+}
+function renderLabourRateProposal(){
+  const totalCost = LABOUR_RATE_PROPOSAL.reduce((sum,r)=>sum+r.cost,0);
+  const totalPrice = LABOUR_RATE_PROPOSAL.reduce((sum,r)=>sum+proposedSellingPrice(r.cost),0);
+  return `
+    <section class="rate-proposal" aria-labelledby="rate-proposal-title">
+      <h2 id="rate-proposal-title">Rate Card — ราคาขายเสนอใหม่</h2>
+      <p>กิจกรรมคลังสินค้าโทรศัพท์มือถือมือสอง · เป้าหมายกำไรขั้นต้น 35% ของราคาขาย</p>
+      <div class="hint">ราคาขาย = ต้นทุนแรงงาน ÷ 0.65 ปัดขึ้นเป็น 2 ตำแหน่ง เพื่อให้ได้อย่างน้อย 35% ก่อนค่าใช้จ่ายอื่นและ VAT</div>
+      <div class="rate-proposal-scroll"><table>
+        <thead><tr><th>กิจกรรม</th><th class="num">ประจำ<br>(คน)</th><th class="num">จ้างเสริม<br>(คน)</th><th class="num">เวลาเฉลี่ย<br>(นาที/ชิ้น)</th><th class="num">ต้นทุนแรงงาน<br>(บาท/ชิ้น)</th><th class="num">ราคาขายใหม่<br>(บาท/ชิ้น)</th></tr></thead>
+        <tbody>${LABOUR_RATE_PROPOSAL.map(r=>`<tr><td>${r.name}</td><td class="num">${r.regular || '-'}</td><td class="num">${r.temp}</td><td class="num">${r.minutes}</td><td class="num">${fmt(r.cost)}</td><td class="num proposed-price">${fmt(proposedSellingPrice(r.cost))}</td></tr>`).join('')}</tbody>
+        <tfoot><tr><td colspan="4">รวม เมื่อผ่านครบทั้ง 5 กิจกรรม อย่างละ 1 ครั้ง</td><td class="num">${fmt(totalCost)}</td><td class="num proposed-price">${fmt(totalPrice)}</td></tr></tfoot>
+      </table></div>
+      <p class="hint">อ้างอิงต้นทุนแรงงานตามตารางที่ให้มา ไม่รวมวัสดุ ค่าเสื่อม และค่าใช้จ่ายอื่น จึงยังไม่ใช่กำไรขั้นต้น 35% จากต้นทุนรวม</p>
+      <p class="rate-proposal-status"><b>ยังไม่ใช้กับใบแจ้งหนี้:</b> รอกำหนดวันเริ่มใช้ราคาและวิธีแยก Return เดิมเป็นรับคืน QC / รับคืนฝ่ายขาย ตารางด้านล่างยังใช้ราคาที่บันทึกอยู่</p>
+    </section>`;
+}
+
 function renderRateCard(){
   const countByActivity = {};
   state.itemRecords.forEach(r=>{ countByActivity[r.activityId] = (countByActivity[r.activityId]||0) + (Number(r.qty)||1); });
@@ -1549,6 +1580,8 @@ function renderRateCard(){
   `;
 
   return `
+    ${renderLabourRateProposal()}
+    <h2>ข้อมูลเรียกเก็บปัจจุบัน</h2>
     ${boxSummaryHtml}
     <h3>1) Process ทั่วไป — กล่อง 1</h3>
     <div class="hint" style="margin-bottom:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
