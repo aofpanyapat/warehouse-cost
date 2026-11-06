@@ -209,100 +209,57 @@ async function hydrateAllForExport(){
   if(r.other!==null)state.manualHeadcounts[r.key].other=Number(r.other);
  });
 }
-function escapeUiText(value){
-  return String(value ?? '').replace(/[&<>"']/g, c=>({'&':'&amp;','<':'&lt;','>':'&gt;','"':'&quot;',"'":'&#39;'}[c]));
-}
-function loadErrorNotice(){
-  const entries=Object.entries(state.loadErrors||{});
-  if(!entries.length)return '';
-  return '<div role="alert" style="padding:14px;margin-bottom:16px;border:1px solid var(--yellow);border-radius:10px">'
-    +'<b>โหลดข้อมูลบางส่วนไม่สำเร็จ</b><ul>'
-    +entries.map(([table,message])=>'<li>'+escapeUiText(table)+': '+escapeUiText(message)+'</li>').join('')
-    +'</ul>ข้อมูลส่วนที่โหลดสำเร็จยังแสดงอยู่ กรุณาอย่านำเข้าซ้ำเพียงเพราะยอดบางส่วนไม่แสดง</div>';
-}
 async function loadFromSupabase(){
-  state.loadErrors={};
-  const requests=[
-    ['activities',()=>sb.from('activities').select('*')],
-    ['staff_cost',()=>sb.from('staff_cost').select('*').eq('id',1).maybeSingle()],
-    ['storage_settings',()=>sb.from('storage_settings').select('*').eq('id',1).maybeSingle()],
-    ...[
-      ['work_logs','date'],['item_records','date'],['storage_ageing','received_date'],
-      ['storage_billing_locks','month'],['manual_headcounts','key']
-    ].filter(([table])=>pageNeeds(table)).map(([table,sort])=>[table,()=>table==='manual_headcounts'
-      ? sb.from(table).select('*') : readAllRows(table,sort)])
-  ];
-  const results=await Promise.allSettled(requests.map(async ([,request])=>sbw(request())));
-  const data={};
-  results.forEach((result,i)=>{
-    const table=requests[i][0];
-    if(result.status==='fulfilled')data[table]=result.value.data;
-    else state.loadErrors[table]=result.reason?.message||'ไม่สามารถโหลดข้อมูลได้';
-  });
-  // Apply successful reads independently. Missing billing-lock metadata must not hide saved IMEI.
-  if('activities' in data)state.activities=(data.activities||[]).map(rowToActivity);
-  if('work_logs' in data)state.logs=(data.work_logs||[]).map(rowToLog);
-  if('item_records' in data)state.itemRecords=(data.item_records||[]).map(rowToItemRecord);
-  if('storage_ageing' in data)state.storageAgeing=(data.storage_ageing||[]).map(rowToAgeing);
-  if('storage_billing_locks' in data)state.storageBillingLocks=(data.storage_billing_locks||[]).map(rowToBillingLock);
-  if(data.staff_cost)state.staffCost=rowToStaffCost(data.staff_cost);
-  if(data.storage_settings)state.storage={price:0.16,volume:Number(data.storage_settings.volume),days:Number(data.storage_settings.days)};
-  if('manual_headcounts' in data){
-    state.manualHeadcounts={};
-    (data.manual_headcounts||[]).forEach(r=>{
-      state.manualHeadcounts[r.key]={};
-      for(const field of ['regular','temp','other'])if(r[field]!=null)state.manualHeadcounts[r.key][field]=Number(r[field]);
-    });
-  }
-  // Only initialise a successfully read, genuinely empty/missing setting.
-  if('activities' in data){
-    try{
-      const missing=DEFAULT_ACTIVITIES.filter(d=>!state.activities.some(a=>a.id===d.id));
-      if(missing.length){
-        await sbw(sb.from('activities').upsert(missing.map(activityToRow),{onConflict:'id',ignoreDuplicates:true}));
-        const refreshed=await sbw(sb.from('activities').select('*'));
-        state.activities=(refreshed.data||[]).map(rowToActivity);
-      }
-      state.activities.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
-    }catch(e){state.loadErrors.activities=e.message||'โหลดกิจกรรมไม่สำเร็จ';}
-  }
-  for(const [table,row] of [
-    ['staff_cost',staffCostToRow(state.staffCost)],
-    ['storage_settings',{id:1,...state.storage}]
-  ]){
-    if(table in data && !data[table]){
-      try{await sbw(sb.from(table).insert(row));}
-      catch(e){state.loadErrors[table]=e.message||'บันทึกค่าเริ่มต้นไม่สำเร็จ';}
+  try{
+    const noRows = () => Promise.resolve({data:[]});
+    const [actRes, logRes, staffRes, storRes, hcRes, itemRes, ageingRes, lockRes] = await Promise.all([
+      sb.from('activities').select('*'),
+      pageNeeds('work_logs') ? readAllRows('work_logs', 'date') : noRows(),
+      sb.from('staff_cost').select('*').eq('id',1).maybeSingle(),
+      sb.from('storage_settings').select('*').eq('id',1).maybeSingle(),
+      pageNeeds('manual_headcounts') ? sb.from('manual_headcounts').select('*') : noRows(),
+      pageNeeds('item_records') ? readAllRows('item_records', 'date') : noRows(),
+      pageNeeds('storage_ageing') ? readAllRows('storage_ageing', 'received_date') : noRows(),
+      pageNeeds('storage_billing_locks') ? readAllRows('storage_billing_locks', 'month') : noRows()
+    ]);
+
+    // Add the new catalogue without renaming, deleting, or reclassifying historical rows.
+    if(actRes.error) throw actRes.error;
+    state.activities = (actRes.data||[]).map(rowToActivity);
+    const missing = DEFAULT_ACTIVITIES.filter(d=>!state.activities.some(a=>a.id===d.id));
+    if(missing.length){
+      await sbw(sb.from('activities').upsert(missing.map(activityToRow), {onConflict:'id', ignoreDuplicates:true}));
+      const refreshed = await sbw(sb.from('activities').select('*'));
+      state.activities = (refreshed.data||[]).map(rowToActivity);
     }
+    state.activities.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
+
+    state.logs = (logRes.data||[]).map(rowToLog);
+    state.itemRecords = (itemRes.data||[]).map(rowToItemRecord);
+    state.storageAgeing = (ageingRes.data||[]).map(rowToAgeing);
+    state.storageBillingLocks = (lockRes.data||[]).map(rowToBillingLock);
+
+    if(staffRes.data){ state.staffCost = rowToStaffCost(staffRes.data); }
+    else { await sbw(sb.from('staff_cost').insert(staffCostToRow(state.staffCost))); }
+
+    if(storRes.data){ state.storage = { price:0.16, volume:Number(storRes.data.volume), days:Number(storRes.data.days) }; }
+    else { await sbw(sb.from('storage_settings').insert({id:1, ...state.storage})); }
+
+    state.manualHeadcounts = {};
+    (hcRes.data||[]).forEach(r=>{
+      state.manualHeadcounts[r.key] = {};
+      if(r.regular!==null) state.manualHeadcounts[r.key].regular = Number(r.regular);
+      if(r.temp!==null) state.manualHeadcounts[r.key].temp = Number(r.temp);
+      if(r.other!==null) state.manualHeadcounts[r.key].other = Number(r.other);
+    });
+
+    showToast('โหลดข้อมูลจาก Supabase สำเร็จ');
+  }catch(e){
+    console.error(e);
+    showToast('โหลดข้อมูลไม่สำเร็จ เช็คอินเทอร์เน็ต/การตั้งค่า Supabase');
+    if(!state.activities.length) state.activities = DEFAULT_ACTIVITIES.map(a=>Object.assign({},a));
   }
   render();
-  showToast(Object.keys(state.loadErrors).length ? 'โหลดข้อมูลบางส่วนไม่สำเร็จ — ดูรายละเอียดด้านบน' : 'โหลดข้อมูลจาก Supabase สำเร็จ');
-}
-
-// Read back each committed batch before showing success. Never infer persistence from local state.
-async function saveItemRecordsVerified(records,onProgress=()=>{}){
-  let confirmed=0;
-  for(let i=0;i<records.length;i+=200){
-    const chunk=records.slice(i,i+200);
-    try{
-      await sbw(sb.from('item_records').insert(chunk.map(itemRecordToRow)));
-    }catch(e){
-      throw new Error('บันทึกไม่สำเร็จ ยืนยันแล้ว '+confirmed+'/'+records.length+' รายการ: '+(e.message||'การเชื่อมต่อขัดข้อง')+' หากขาดการเชื่อมต่อให้โหลดตรวจสอบก่อนนำเข้าซ้ำ');
-    }
-    try{
-      const result=await sbw(sb.from('item_records').select('*').in('id',chunk.map(r=>r.id)));
-      const rows=result.data||[];
-      const returned=new Set(rows.map(r=>r.id));
-      if(chunk.some(r=>!returned.has(r.id)))throw new Error('อ่านกลับได้ไม่ครบทุกรายการ');
-      const saved=rows.map(rowToItemRecord);
-      const ids=new Set(saved.map(r=>r.id));
-      state.itemRecords=state.itemRecords.filter(r=>!ids.has(r.id)).concat(saved);
-      confirmed+=chunk.length;
-      onProgress(confirmed,records.length);
-    }catch(e){
-      throw new Error('ส่งข้อมูลแล้ว แต่ยังยืนยันการอ่านกลับไม่ได้: '+(e.message||'การเชื่อมต่อขัดข้อง')+' กรุณาโหลดตรวจสอบก่อนนำเข้าซ้ำ (ยืนยันแล้ว '+confirmed+'/'+records.length+' รายการ)');
-    }
-  }
 }
 async function load(){
   try{
@@ -653,7 +610,7 @@ function render(){
 
       </aside>
       <main class="content-shell">
-        <div class="panel">${loadErrorNotice()}${renderTab()}</div>
+        <div class="panel">${renderTab()}</div>
       </main>
     </div>
   `;
@@ -2445,7 +2402,6 @@ function attachHandlers(){
   if(invIncludeItemDetail) invIncludeItemDetail.onchange = ()=>{ state.invoiceInfo.includeItemDetail = invIncludeItemDetail.value === 'yes'; saveInvoiceInfo(); render(); };
   const exportInvoiceBtn = document.getElementById('export-invoice-pdf');
   if(exportInvoiceBtn) exportInvoiceBtn.onclick = ()=>{
-    if(Object.keys(state.loadErrors||{}).length){showToast('ยังโหลดข้อมูลรอบบิลไม่ครบ กรุณาแก้ข้อผิดพลาดด้านบนก่อนพิมพ์');return;}
     if(legacyBillingRecords().length){ showToast('ยังมีรายการกิจกรรมเดิมในรอบบิล กรุณาจัดประเภทรายการก่อนออกใบแจ้งหนี้'); return; }
     window.print();
   };
@@ -2808,7 +2764,6 @@ function attachHandlers(){
 
   const lockBtn = document.getElementById('lock-ageing-month');
   if(lockBtn) lockBtn.onclick = async ()=>{
-    if(state.loadErrors?.storage_billing_locks){showToast('ยังโหลดตารางล็อกบิลไม่ได้ จึงปิดบิลไม่ได้');return;}
     const monthStr = state.ageingSelectedMonth || todayStr().slice(0,7);
     const bill = storageAgeingBillForMonth(monthStr); // คำนวณสดครั้งสุดท้ายก่อน freeze
     if(!bill.rows.length){ showToast('ไม่มีรายการที่ต้องคิดเงินในเดือนนี้ ไม่ต้องปิดบิล'); return; }
@@ -2830,7 +2785,6 @@ function attachHandlers(){
 
   const unlockBtn = document.getElementById('unlock-ageing-month');
   if(unlockBtn) unlockBtn.onclick = async ()=>{
-    if(state.loadErrors?.storage_billing_locks){showToast('ยังโหลดตารางล็อกบิลไม่ได้');return;}
     const monthStr = state.ageingSelectedMonth || todayStr().slice(0,7);
     const lock = state.storageBillingLocks.find(l=>l.month===monthStr);
     if(!lock) return;
@@ -2888,9 +2842,14 @@ function attachHandlers(){
           if(!newRecords.length){ showToast('ไม่พบข้อมูล IMEI ในไฟล์ (เช็คหัวคอลัมน์ว่ามี "IMEI" ไหม)'); btn.disabled=false; btn.textContent=origLabel; return; }
 
           btn.textContent = `กำลังบันทึก 0/${newRecords.length}...`;
-          await saveItemRecordsVerified(newRecords,(done,total)=>{
-            btn.textContent = `ยืนยันการบันทึก ${done}/${total}...`;
-          });
+          const CHUNK = 500;
+          for(let i=0; i<newRecords.length; i+=CHUNK){
+            const chunk = newRecords.slice(i, i+CHUNK);
+            const res = await sbw(sb.from('item_records').insert(chunk.map(itemRecordToRow)));
+            if(res.error) throw res.error;
+            btn.textContent = `กำลังบันทึก ${Math.min(i+CHUNK,newRecords.length)}/${newRecords.length}...`;
+          }
+          state.itemRecords = state.itemRecords.concat(newRecords);
           state.expandedItemActivities[activityId] = true;
           fileEl.value = '';
           render(); showToast(`นำเข้า ${newRecords.length} รายการจากไฟล์สำเร็จ`);
@@ -2932,8 +2891,6 @@ function attachHandlers(){
 
   document.querySelectorAll('.add-item-records-btn').forEach(btn=>{
     btn.onclick = async ()=>{
-      if(btn.disabled)return;
-      const originalLabel=btn.textContent;
       const activityId = btn.dataset.activityForItem;
       const dateEl = document.getElementById(`item-date-${activityId}`);
       const refEl = document.getElementById(`item-ref-${activityId}`);
@@ -2965,13 +2922,13 @@ function attachHandlers(){
         if(!ok) return;
       }
       try{
-        btn.disabled=true; btn.textContent='กำลังบันทึกและตรวจสอบ...';
-        await saveItemRecordsVerified(newRecords);
+        const res = await sbw(sb.from('item_records').insert(newRecords.map(itemRecordToRow)));
+        if(res.error) throw res.error;
+        state.itemRecords = state.itemRecords.concat(newRecords);
         state.expandedItemActivities[activityId] = true; // keep the accordion open after re-render
         const totalQty = newRecords.reduce((s,r)=>s+r.qty,0);
         render(); showToast(`เพิ่ม ${newRecords.length} รายการ (${totalQty} ชิ้น) แล้ว`);
       }catch(e){
-        btn.disabled=false; btn.textContent=originalLabel;
         console.error(e);
         showToast(`เพิ่มรายการไม่สำเร็จ: ${e && e.message ? e.message : 'เช็คว่าสร้างตาราง/คอลัมน์ครบหรือยัง'}`);
       }
