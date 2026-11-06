@@ -308,8 +308,7 @@ button:disabled{opacity:.45;cursor:not-allowed}
 
 /* Formal navigation and proposed labour rate card. */
 @media screen {
-  body { background:#0c1726; }
-  body::before, body::after, .header::before, .header::after,
+  .header::before, .header::after,
   .sidebar::before, .header h1::before { display:none; }
   .header, .sidebar { background:#122236; border-radius:14px; box-shadow:none; }
   .header h1 { text-shadow:none; }
@@ -345,4 +344,48 @@ button:disabled{opacity:.45;cursor:not-allowed}
   .header { padding:18px; }
   .header h1 { font-size:26px; }
   .rate-proposal { padding:12px; }
+}
+
+/* Left navigation: layered navy glass with a clear active-page indicator. */
+@media screen {
+  .sidebar {
+    background:linear-gradient(165deg,rgba(22,53,83,.96),rgba(6,21,40,.94));
+    border:1px solid rgba(128,207,255,.28);
+    border-radius:22px;
+    box-shadow:0 22px 50px rgba(0,7,18,.35),inset 0 1px 0 rgba(201,237,255,.12);
+  }
+  .sidebar-brand { padding-bottom:18px; border-bottom-color:rgba(147,210,255,.18); }
+  .sidebar-brand .eyebrow { color:#80dfff; letter-spacing:.18em; }
+  .sidebar-brand .title { font-size:19px; letter-spacing:.01em; }
+  .tabs { gap:7px; }
+  a.tab,a.tab:link,a.tab:visited {
+    min-height:48px; padding:12px 14px; border-radius:12px;
+    color:#c1d0e3; border:1px solid transparent;
+    transition:background .18s ease,border-color .18s ease,color .18s ease,box-shadow .18s ease;
+  }
+  .tab::before {
+    width:5px; height:5px; background:#6888a9;
+    box-shadow:none; flex:0 0 auto;
+  }
+  a.tab:hover:not(.active) {
+    color:#fff; background:rgba(116,197,255,.09);
+    border-color:rgba(116,197,255,.22); transform:none;
+  }
+  a.tab.active,a.tab.active:visited {
+    color:#f3fcff;
+    background:linear-gradient(110deg,rgba(35,134,196,.40),rgba(57,99,175,.26));
+    border-color:rgba(116,216,255,.48);
+    box-shadow:inset 3px 0 0 #67deff,0 5px 20px rgba(0,128,208,.13);
+  }
+  a.tab.active::before { background:#8eeaff; box-shadow:0 0 9px rgba(103,222,255,.65); }
+  a.tab:focus-visible { outline:2px solid #a5ebff; outline-offset:3px; }
+}
+@media screen and (max-width:760px) {
+  .sidebar { border-radius:16px; }
+  .sidebar-brand .title { font-size:15px; }
+  a.tab,a.tab:link,a.tab:visited { padding:10px 8px; font-size:12px; }
+}
+@media (prefers-reduced-motion:reduce) {
+  body::after { animation:none; }
+  a.tab { transition:none; }
 }
