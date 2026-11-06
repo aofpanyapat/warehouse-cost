@@ -211,14 +211,18 @@ async function hydrateAllForExport(){
 }
 async function loadFromSupabase(){
   try{
+    // Load saved IMEI records independently so an unrelated table cannot hide them.
+    if(pageNeeds('item_records')){
+      const itemRes = await readAllRows('item_records', 'date');
+      state.itemRecords = (itemRes.data||[]).map(rowToItemRecord);
+    }
     const noRows = () => Promise.resolve({data:[]});
-    const [actRes, logRes, staffRes, storRes, hcRes, itemRes, ageingRes, lockRes] = await Promise.all([
+    const [actRes, logRes, staffRes, storRes, hcRes, ageingRes, lockRes] = await Promise.all([
       sb.from('activities').select('*'),
       pageNeeds('work_logs') ? readAllRows('work_logs', 'date') : noRows(),
       sb.from('staff_cost').select('*').eq('id',1).maybeSingle(),
       sb.from('storage_settings').select('*').eq('id',1).maybeSingle(),
       pageNeeds('manual_headcounts') ? sb.from('manual_headcounts').select('*') : noRows(),
-      pageNeeds('item_records') ? readAllRows('item_records', 'date') : noRows(),
       pageNeeds('storage_ageing') ? readAllRows('storage_ageing', 'received_date') : noRows(),
       pageNeeds('storage_billing_locks') ? readAllRows('storage_billing_locks', 'month') : noRows()
     ]);
@@ -235,7 +239,6 @@ async function loadFromSupabase(){
     state.activities.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
 
     state.logs = (logRes.data||[]).map(rowToLog);
-    state.itemRecords = (itemRes.data||[]).map(rowToItemRecord);
     state.storageAgeing = (ageingRes.data||[]).map(rowToAgeing);
     state.storageBillingLocks = (lockRes.data||[]).map(rowToBillingLock);
 
