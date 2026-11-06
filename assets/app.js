@@ -60,7 +60,7 @@ const DEFAULT_ACTIVITIES = [
     "sortOrder": 5
   }
 ];
-const RETIRED_ACTIVITY_IDS = new Set(['p1','p2','p3','p4','p5']);
+const RETIRED_ACTIVITY_IDS = new Set(['p1','p2','p3','p4','p5','p1s','p4s','p6']);
 function activeActivities(){ return state.activities.filter(a=>!RETIRED_ACTIVITY_IDS.has(a.id)); }
 function primaryActivities(){ return DEFAULT_ACTIVITIES.map(d=>state.activities.find(a=>a.id===d.id)).filter(Boolean); }
 
@@ -74,7 +74,7 @@ let state = { activities: [], logs: [], employees: [], manualHeadcounts: {}, ite
     tempCount: 4, tempWage: 14040, tempDivisor: 208,
     tempExtraCount: 0, tempExtraHoursPerDay: 0, tempExtraDays: 0
   },
-  storage: { price: 0.3, volume: 0, days: 30 },
+  storage: { price: 0.16, volume: 0, days: 30 },
   planSettings: { bufferPct: 15 },
   dailyCostOverrides: {}, // { 'YYYY-MM-DD': { regular, temp, extraCount, extraHours } } — local-only, not synced to Supabase
   expandedItemActivities: {}, // { activityId: true } — keeps the IMEI <details> accordion open across re-renders
@@ -93,7 +93,7 @@ function setInvoiceDefaults(){
   if(!inv.billingStart) inv.billingStart = firstDay;
   if(!inv.billingEnd) inv.billingEnd = lastDay;
   if(!inv.issueDate) inv.issueDate = todayStr();
-  if(!inv.invoiceNo) inv.invoiceNo = `SWP-${y}${String(m+1).padStart(2,'0')}-001`;
+  if(!inv.invoiceNo) inv.invoiceNo = `ABC-${y}${String(m+1).padStart(2,'0')}-001`;
 }
 function fmt(n){ return Number(n||0).toLocaleString('th-TH', {minimumFractionDigits:2, maximumFractionDigits:2}); }
 
@@ -242,7 +242,7 @@ async function loadFromSupabase(){
     if(staffRes.data){ state.staffCost = rowToStaffCost(staffRes.data); }
     else { await sbw(sb.from('staff_cost').insert(staffCostToRow(state.staffCost))); }
 
-    if(storRes.data){ state.storage = { price:Number(storRes.data.price), volume:Number(storRes.data.volume), days:Number(storRes.data.days) }; }
+    if(storRes.data){ state.storage = { price:0.16, volume:Number(storRes.data.volume), days:Number(storRes.data.days) }; }
     else { await sbw(sb.from('storage_settings').insert({id:1, ...state.storage})); }
 
     state.manualHeadcounts = {};
@@ -582,12 +582,12 @@ function render(){
   app.innerHTML = `
     <div class="header">
       <div>
-        <h1>warehouse cost</h1>
-        <div class="sub">ตั้งมาตรฐานกิจกรรมครั้งเดียว จากนั้นกรอกแค่ คน / งานที่ได้ / OT ต่อวัน</div>
+        <h1>📦 warehouse cost</h1>
+
       </div>
       <div style="display:flex;flex-direction:column;align-items:flex-end;gap:6px">
         <div class="stamp">${todayStr()}</div>
-        <button id="export-excel" style="background:var(--yellow)">Export Excel</button>
+        <button id="export-excel" style="background:var(--yellow)">⬇ Export Excel</button>
       </div>
     </div>
     <div class="workspace">
@@ -595,22 +595,19 @@ function render(){
         <div class="sidebar-brand">
           <div class="eyebrow">Warehouse Cost</div>
           <div class="title">เมนูควบคุม</div>
-          <div class="desc">เลือกหน้าทำงานจากด้านซ้าย เพื่อกรอกข้อมูลและดูรายงานได้เร็วขึ้น</div>
+
         </div>
         <div class="tabs">
-          ${tabBtn('dashboard','Dashboard')}
-          ${tabBtn('pricing','ตั้งค่ากิจกรรม')}
-          ${tabBtn('employees','ต้นทุนพนักงาน')}
-          ${tabBtn('log','บันทึกงานประจำวัน')}
-          ${tabBtn('ratecard','Rate Card')}
-          ${tabBtn('activitybreak','สรุปตามกิจกรรม')}
-          ${tabBtn('workforceplan','วางแผนกำลังคน')}
-          ${tabBtn('ageing','Ageing (ค่าจัดเก็บ)')}
-          ${tabBtn('summary','สรุปกำไรขาดทุน')}
+          ${tabBtn('dashboard','🎯 Dashboard')}
+          ${tabBtn('pricing','⚙️ ตั้งค่ากิจกรรม')}
+          ${tabBtn('employees','👥 ต้นทุนพนักงาน')}
+          ${tabBtn('log','📝 บันทึกงานประจำวัน')}
+          ${tabBtn('ratecard','💰 Rate Card')}
+          ${tabBtn('activitybreak','📊 สรุปตามกิจกรรม')}
+          ${tabBtn('ageing','📅 Ageing (ค่าจัดเก็บ)')}
+          ${tabBtn('summary','📈 สรุปกำไรขาดทุน')}
         </div>
-        <div class="sidebar-footer">
-          <div class="mini"><b>Tips:</b> เริ่มจากบันทึกงานประจำวัน แล้วดู Dashboard / Rate Card เพื่อสรุปต้นทุนและกำไร</div>
-        </div>
+
       </aside>
       <main class="content-shell">
         <div class="panel">${renderTab()}</div>
@@ -707,7 +704,7 @@ function renderDashboard(){
   }).join('') || `<tr><td colspan="6" style="color:var(--text-dim);text-align:center">ยังไม่มีข้อมูลบันทึกงาน</td></tr>`;
 
   return `
-    <div class="section-title" style="margin-top:0">ภาพรวมสะสม</div>
+    <div class="section-title" style="margin-top:0">📊 ภาพรวมสะสม</div>
     <div class="grid3" style="margin-bottom:16px">
       <div class="card revenue"><div class="big">${fmt(totalRev)}</div><div class="label">รายได้รวม (บาท)</div></div>
       <div class="card cost"><div class="big">${fmt(totalCost)}</div><div class="label">ต้นทุนรวม (บาท)</div></div>
@@ -717,7 +714,7 @@ function renderDashboard(){
       </div>
     </div>
 
-    <div class="section-title">เฉลี่ยกำไร/ขาดทุน</div>
+    <div class="section-title">⏱ เฉลี่ยกำไร/ขาดทุน</div>
     <div class="grid3" style="margin-bottom:16px">
       <div class="card ${avgPerDay>=0?'profit':'loss'}">
         <div class="big">${fmt(avgPerDay)}</div>
@@ -731,36 +728,36 @@ function renderDashboard(){
     </div>
 
     ${worstDay || bestDay ? `
-    <div class="section-title">วันที่ทำงานเด่น</div>
+    <div class="section-title">🔴 วันที่ทำงานเด่น</div>
     <div class="grid3" style="margin-bottom:16px">
       ${bestDay ? `<div class="card profit"><div class="big">${fmt(bestDay.profit)}</div><div class="label">วันที่กำไรสูงสุด: ${bestDay.date}</div></div>` : ''}
       ${worstDay ? `<div class="card loss"><div class="big">${fmt(worstDay.profit)}</div><div class="label">วันที่ขาดทุนหนักสุด: ${worstDay.date}</div></div>` : ''}
     </div>` : ''}
 
-    <div class="section-title">กราฟกำไร/ขาดทุน รายวัน (30 วันล่าสุด)</div>
+    <div class="section-title">📈 กราฟกำไร/ขาดทุน รายวัน (30 วันล่าสุด)</div>
     <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;height:320px">
       <canvas id="chart-daily"></canvas>
     </div>
 
-    <div class="section-title">กราฟกำไร/ขาดทุน รายเดือน</div>
+    <div class="section-title">📊 กราฟกำไร/ขาดทุน รายเดือน</div>
     <div style="background:var(--panel-2);border:1px solid var(--line);border-radius:var(--radius);padding:16px;margin-bottom:16px;height:320px">
       <canvas id="chart-monthly"></canvas>
     </div>
 
-    <div class="section-title">สรุปรายวัน (10 วันล่าสุด)</div>
+    <div class="section-title">📅 สรุปรายวัน (10 วันล่าสุด)</div>
     <table>
       <thead><tr><th>วันที่</th><th class="num">จำนวนงาน</th><th class="num">รายได้</th><th class="num">ต้นทุน</th><th class="num">กำไร/ขาดทุน</th><th class="num">%</th></tr></thead>
       <tbody>${dayRows}</tbody>
     </table>
 
-    <div class="section-title">สรุปรายเดือน</div>
+    <div class="section-title">📆 สรุปรายเดือน</div>
     <table>
       <thead><tr><th>เดือน</th><th class="num">จำนวนงาน</th><th class="num">รายได้</th><th class="num">ต้นทุน</th><th class="num">กำไร/ขาดทุน</th><th class="num">%</th></tr></thead>
       <tbody>${monthRows}</tbody>
     </table>
 
     <div class="hint" style="margin-top:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
-      "ต้นทุน" ในหน้านี้คือ<b>เงินจริงที่ต้องจ่ายค่าแรง</b> (คนที่ใช้จริงในแต่ละวัน × ค่าแรง/ชม. × ชั่วโมงทำงาน/วันของแต่ละกลุ่ม) ไม่ใช่แค่ต้นทุนที่กระจายตามกิจกรรม — ปรับตัวเลขคนที่ใช้แต่ละวันได้ที่หน้า "สรุปตามกิจกรรม" ตัวเลขในหน้านี้จะอัปเดตตามทันที ยิ่งบันทึกทุกวันสม่ำเสมอ ตัวเลขจะยิ่งสะท้อนความเป็นจริงได้แม่นยำ
+      💡 "ต้นทุน" ในหน้านี้คือ<b>เงินจริงที่ต้องจ่ายค่าแรง</b> (คนที่ใช้จริงในแต่ละวัน × ค่าแรง/ชม. × ชั่วโมงทำงาน/วันของแต่ละกลุ่ม) ไม่ใช่แค่ต้นทุนที่กระจายตามกิจกรรม — ปรับตัวเลขคนที่ใช้แต่ละวันได้ที่หน้า "สรุปตามกิจกรรม" ตัวเลขในหน้านี้จะอัปเดตตามทันที ยิ่งบันทึกทุกวันสม่ำเสมอ ตัวเลขจะยิ่งสะท้อนความเป็นจริงได้แม่นยำ
     </div>
   `;
 }
@@ -821,7 +818,7 @@ function renderPricing(){
 
     <h3>มาตรฐานกิจกรรม (ตั้งครั้งเดียว)</h3>
     <div class="wage-box" style="margin-bottom:16px">
-      <div class="hint" style="margin-bottom:8px">เพิ่มกิจกรรมใหม่</div>
+      <div class="hint" style="margin-bottom:8px">➕ เพิ่มกิจกรรมใหม่</div>
       <div class="row">
         <div><div class="hint">ชื่อกิจกรรม</div><input type="text" id="new-activity-name" placeholder="เช่น รับเครื่อง Drop Point Samsung" style="width:260px"></div>
         <div><div class="hint">ราคาขาย/Unit (บาท)</div><input type="number" step="0.1" id="new-activity-price" value="0" style="width:120px"></div>
@@ -918,15 +915,15 @@ function renderEmployees(){
       </div>
       <div class="hint" style="margin-top:8px">ชั่วโมงทำงานรวมทั้งทีม/เดือน = ${s.regularCount + s.tempCount} คน × ${state.timeSettings.hoursPerDay} ชม./วัน × ${state.timeSettings.daysPerMonth} วัน = <b style="color:var(--text)">${fmt(refWage.totalTeamHoursPerMonth)} ชม./เดือน</b></div>
       <div class="hint" style="margin-top:4px">ค่าแรงเฉลี่ย/ชม./คน (คำนวณอัตโนมัติ) = รวมค่าพนักงาน (${fmt(c.grandTotal)}) ÷ ชั่วโมงรวมทีม (${fmt(refWage.totalTeamHoursPerMonth)}) = <b style="color:var(--blue)">${fmt(refWage.calculated)} บาท/ชม./คน</b></div>
-      <div class="hint" style="margin-top:10px">ค่านี้เป็นการตั้งค่าชั่วคราวในเบราว์เซอร์นี้เท่านั้น (ยังไม่บันทึกลง Supabase) รีเฟรชหน้าจะกลับเป็นค่าเริ่มต้น</div>
+      <div class="hint" style="margin-top:10px">⚠️ ค่านี้เป็นการตั้งค่าชั่วคราวในเบราว์เซอร์นี้เท่านั้น (ยังไม่บันทึกลง Supabase) รีเฟรชหน้าจะกลับเป็นค่าเริ่มต้น</div>
     </div>
 
-    <div class="section-title" style="margin-top:12px">ต้นทุนรวม/เดือน</div>
+    <div class="section-title" style="margin-top:12px">💰 ต้นทุนรวม/เดือน</div>
     <div style="max-width:340px;margin-bottom:12px">
       <div class="card"><div class="big" style="color:var(--yellow)">${fmt(c.grandTotal)}</div><div class="label">ต้นทุนรวม/เดือน (บาท) — ค่าจ้างพนักงานทั้ง ${s.regularCount + s.tempCount} คน</div></div>
     </div>
 
-    <div class="section-title">ต่อคน 1 คน (per-person)</div>
+    <div class="section-title">👤 ต่อคน 1 คน (per-person)</div>
     <div class="grid4" style="margin-bottom:16px">
       <div class="card"><div class="big" style="color:var(--blue)">${fmt(c.grandTotal / (s.regularCount + s.tempCount))}</div><div class="label">บาท/คน/เดือน (÷ ${s.regularCount + s.tempCount} คน)</div></div>
       <div class="card"><div class="big" style="color:var(--blue)">${fmt(refWage.calculated * state.timeSettings.hoursPerDay)}</div><div class="label">บาท/คน/วัน (× ${state.timeSettings.hoursPerDay} ชม./วัน)</div></div>
@@ -934,7 +931,7 @@ function renderEmployees(){
       <div class="card"><div class="big" style="color:var(--blue)">${fmt(refWage.calculated/60)}</div><div class="label">บาท/คน/นาที (÷ 60)</div></div>
     </div>
 
-    <div class="section-title">ต่อทีม ${s.regularCount + s.tempCount} คน (per-team)</div>
+    <div class="section-title">👥 ต่อทีม ${s.regularCount + s.tempCount} คน (per-team)</div>
     <div class="grid4" style="margin-bottom:12px">
       <div class="card"><div class="big" style="color:var(--teal)">${fmt(c.grandTotal)}</div><div class="label">บาท/ทีม/เดือน (= ต้นทุนรวม)</div></div>
       <div class="card"><div class="big" style="color:var(--teal)">${fmt(refWage.calculated * (s.regularCount + s.tempCount) * state.timeSettings.hoursPerDay)}</div><div class="label">บาท/ทีม/วัน (ต่อคน × ${s.regularCount + s.tempCount} คน × ${state.timeSettings.hoursPerDay} ชม.)</div></div>
@@ -942,7 +939,7 @@ function renderEmployees(){
       <div class="card"><div class="big" style="color:var(--teal)">${fmt(refWage.calculated * (s.regularCount + s.tempCount) / 60)}</div><div class="label">บาท/ทีม/นาที (÷ 60)</div></div>
     </div>
 
-    <div class="section-title">แยกตามกลุ่มพนักงาน (ใช้ในบันทึกงานประจำวันจริง)</div>
+    <div class="section-title">🏷️ แยกตามกลุ่มพนักงาน (ใช้ในบันทึกงานประจำวันจริง)</div>
     <div class="grid4" style="margin-bottom:16px">
       <div class="card"><div class="big" style="color:var(--purple)">${fmt(c.regularHourlyRate)}</div><div class="label">ประจำ — บาท/คน/ชม.</div></div>
       <div class="card"><div class="big" style="color:var(--purple)">${fmt(c.regularHourlyRate/60)}</div><div class="label">ประจำ — บาท/คน/นาที</div></div>
@@ -952,7 +949,7 @@ function renderEmployees(){
     <div class="hint" style="margin-bottom:16px">นี่คืออัตราที่ <b>ใช้จริง</b> ในหน้า "บันทึกงานประจำวัน" (แยกตามกลุ่มคนที่กรอกจริง) — ต่างจากค่า "ต่อคน" เฉลี่ยรวมด้านบน ซึ่งเป็นแค่ค่าประมาณสำหรับตาราง "มาตรฐานกิจกรรม" เท่านั้น</div>
 
     <div class="hint" style="margin-bottom:12px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--yellow)">
-      <b>ระบบใช้ค่า "ต่อคน" ${fmt(refWage.calculated)} บาท/คน/ชม.</b> ในการคำนวณต้นทุนกิจกรรม เพราะแต่ละกิจกรรมใช้จำนวนคนไม่เท่ากัน — เช่น Inbound ใช้ 2 คน คิดเป็น ${fmt(refWage.calculated * 2)} บาท/ชม., Handling OUT ใช้ 3 คน คิดเป็น ${fmt(refWage.calculated * 3)} บาท/ชม.
+      💡 <b>ระบบใช้ค่า "ต่อคน" ${fmt(refWage.calculated)} บาท/คน/ชม.</b> ในการคำนวณต้นทุนกิจกรรม เพราะแต่ละกิจกรรมใช้จำนวนคนไม่เท่ากัน — เช่น Inbound ใช้ 2 คน คิดเป็น ${fmt(refWage.calculated * 2)} บาท/ชม., Handling OUT ใช้ 3 คน คิดเป็น ${fmt(refWage.calculated * 3)} บาท/ชม.
     </div>
 
     <div class="wage-box">
@@ -1081,12 +1078,8 @@ function computeProcessBoxes(billingStart, billingEnd){
 
   // ---- กล่องที่ 3: Samsung มือ 1 (กิจกรรมแยกเป็นของตัวเอง มี IMEI/import เป็นของตัวเอง) + Packaging (log รวมกล่องเดียวกันเฉยๆ ไม่เกี่ยวกับ Samsung) ----
   // ราคาต่อชิ้นของ "รับสินค้าเข้า/DEMO (Samsung มือ1)" ตั้งแยกอิสระเป็นของตัวเอง ไม่ผูกกับกล่องที่ 1 (แก้ได้ที่การ์ดของมันเองในกล่อง 3)
-  const box3Items = [
-    actP1s && { name: actP1s.name, price: actP1s.price, qty: qtyOf(actP1s) },
-    actP4s && { name: actP4s.name, price: actP4s.price, qty: qtyOf(actP4s) },
-    actP6 && { name: actP6.name, price: actP6.price, qty: qtyOf(actP6) },
-  ].filter(Boolean);
-  const box3Total = box3Items.reduce((s,x)=>s+x.price*x.qty, 0);
+  const box3Items = [];
+  const box3Total = 0;
 
   return { box1Items, box1Total, box3Items, box3Total };
 }
@@ -1160,28 +1153,30 @@ function buildInvoiceHTML(){
     <table class="inv-table">
       <thead><tr><th>No.</th><th>บริการ / Process</th><th>UOM</th><th class="num">ราคา/ชิ้น</th><th class="num">จำนวน (ชิ้น)</th><th class="num">ราคารวม (THB)</th></tr></thead>
       <tbody>${box1RowsHtml}</tbody>
-      <tfoot><tr><td colspan="5" style="text-align:right">รวม Process (ไม่รวม Storage / Samsung มือ 1)</td><td class="num">${fmt(box1Total)}</td></tr></tfoot>
+      <tfoot><tr><td colspan="5" style="text-align:right">รวม Process (ไม่รวม Storage)</td><td class="num">${fmt(box1Total)}</td></tr></tfoot>
     </table>
 
     <div class="inv-section-title">2) Storage Charge / ค่าจัดเก็บ${useAgeing ? ` (คำนวณจาก Ageing จริง — ${billingLabel})` : ''}</div>
+    <table class="inv-table" style="margin-bottom:5px">
+      <thead><tr><th>รายการ</th><th class="num">ผลการคำนวณ</th></tr></thead>
+      <tbody>
+        <tr><td>ต้นทุนการจัดเก็บ</td><td class="num">0.1032 บาท/ชิ้น/วัน</td></tr>
+        <tr><td>อัตรากำไรขั้นต้น (GPM)</td><td class="num">35.00%</td></tr>
+        <tr><td>ราคาค่าบริการจัดเก็บสินค้า (อัตราปัจจุบัน)</td><td class="num">0.16 บาท/ชิ้น/วัน</td></tr>
+      </tbody>
+    </table>
+    ${useAgeing && (ageingBill.locked || ageingBill.anyLocked) ? '<div class="inv-sub">บิลที่ปิดแล้วใช้อัตราและยอดที่บันทึกไว้เดิม</div>' : ''}
     <table class="inv-table">
       <thead><tr><th>บริการ</th><th>UOM</th><th class="num">ราคา/ชิ้น/วัน</th><th class="num">${useAgeing?'จำนวน IMEI':'Volume เฉลี่ย'}</th><th class="num">${useAgeing?'รวมวันที่คิด':'จำนวนวัน'}</th><th class="num">ราคารวม (THB)</th></tr></thead>
       <tbody><tr><td>Storage - ค่าจัดเก็บ</td><td>THB/Unit/Day</td><td class="num">${fmt(useAgeing?ageingBill.rate:st.price)}</td><td class="num">${useAgeing?fmt(ageingBill.rows.length):fmt(st.volume)}</td><td class="num">${useAgeing?fmt(ageingBill.totalDays):fmt(st.days)}</td><td class="num">${fmt(storageTotal)}</td></tr></tbody>
       <tfoot><tr><td colspan="5" style="text-align:right">รวม Storage</td><td class="num">${fmt(storageTotal)}</td></tr></tfoot>
     </table>
 
-    <div class="inv-section-title">3) Samsung มือ 1 / New Devices</div>
-    <table class="inv-table">
-      <thead><tr><th>No.</th><th>บริการ / Process</th><th>UOM</th><th class="num">ราคา/ชิ้น</th><th class="num">จำนวน (ชิ้น)</th><th class="num">ราคารวม (THB)</th></tr></thead>
-      <tbody>${box3RowsHtml || '<tr><td colspan="6" style="color:#999">ไม่มีรายการ Samsung มือ 1 ในรอบบิลนี้</td></tr>'}</tbody>
-      <tfoot><tr><td colspan="5" style="text-align:right">รวม Samsung มือ 1</td><td class="num">${fmt(box3Total)}</td></tr></tfoot>
-    </table>
-
     <div class="inv-bottom">
       <div class="inv-note">
         <b>หมายเหตุ / Note</b>
         <ol>
-          <li>รายการและยอดเงินอ้างอิงจากข้อมูลที่กรอกในระบบ Swopmart Rate Card</li>
+          <li>รายการและยอดเงินอ้างอิงจากข้อมูลที่กรอกในระบบ บริษัท ABC Rate Card</li>
           <li>หากต้องการออกใบกำกับภาษี กรุณาตรวจสอบข้อมูลบริษัท เลขประจำตัวผู้เสียภาษี และ VAT ก่อนส่งลูกค้า</li>
           <li>เอกสารนี้เป็น Template สามารถปรับชื่อลูกค้า รอบบิล และเงื่อนไขการชำระเงินได้ตามจริง</li>
         </ol>
@@ -1199,7 +1194,7 @@ function buildInvoiceHTML(){
       <div><div class="line">Customer Acknowledged / ลูกค้ารับทราบ</div>Date: ___ / ___ / ___</div>
     </div>
 
-    <div class="inv-footer">SWOPMART - Warehouse Service Invoice Template &nbsp;|&nbsp; Generated from Rate Card Export</div>
+    <div class="inv-footer">บริษัท ABC - Warehouse Service Invoice Template &nbsp;|&nbsp; Generated from Rate Card Export</div>
   </div>${buildInvoiceItemDetailPages(includeStorageDetail?1:0)}${includeStorageDetail ? buildInvoiceStorageDetailPage(1 + invoiceActivityDetailData(inv).length + 1, 1 + invoiceActivityDetailData(inv).length + 1, ageingBill, billingLabel) : ''}`;
 }
 
@@ -1288,7 +1283,7 @@ function buildInvoiceItemDetailPages(extraPagesAfter){
       </table>
       <div style="text-align:right;margin-top:6px;font-size:11px;color:#666">${totalQty} ชิ้น × ${fmt(a.price)} บาท/ชิ้น = <b style="color:#0b3d91">${fmt(totalAmount)} บาท</b></div>
 
-      <div class="inv-footer">SWOPMART - Warehouse Service Invoice Template &nbsp;|&nbsp; ${a.name}</div>
+      <div class="inv-footer">บริษัท ABC - Warehouse Service Invoice Template &nbsp;|&nbsp; ${a.name}</div>
     </div>`;
   }).join('');
 }
@@ -1337,7 +1332,7 @@ function buildInvoiceStorageDetailPage(pageNo, totalPages, ageingBill, billingLa
         </div>
       </div>
 
-      <div class="inv-activity-bar">Storage — ค่าจัดเก็บ${ageingBill.locked?' (ปิดบิลแล้ว)':''}</div>
+      <div class="inv-activity-bar">Storage — ค่าจัดเก็บ${ageingBill.locked?' 🔒 (ปิดบิลแล้ว)':''}</div>
       <div class="inv-stat-row">
         <div class="inv-stat"><div class="lbl">จำนวน IMEI</div><div class="val">${rows.length}</div></div>
         <div class="inv-stat"><div class="lbl">รอบบิล</div><div class="val">${billingLabel}</div></div>
@@ -1354,7 +1349,7 @@ function buildInvoiceStorageDetailPage(pageNo, totalPages, ageingBill, billingLa
         <tfoot><tr><td colspan="5" style="text-align:right">รวม Storage</td><td class="num">${totalDays} วัน</td><td class="num">${fmt(totalCost)} บาท</td></tr></tfoot>
       </table>
 
-      <div class="inv-footer">SWOPMART - Warehouse Service Invoice Template &nbsp;|&nbsp; Storage Charge Details</div>
+      <div class="inv-footer">บริษัท ABC - Warehouse Service Invoice Template &nbsp;|&nbsp; Storage Charge Details</div>
     </div>`;
 }
 
@@ -1379,7 +1374,7 @@ function renderRateCard(){
     const vol = Number(a.monthlyVolume||0);
     const match = count === vol;
     const badge = count > 0
-      ? `<span style="margin-left:8px;font-size:12px;color:${match?'var(--green)':'var(--yellow)'}">${match?'ตรงกับ Volume':`ต่างจาก Volume ${count-vol>0?'+':''}${count-vol}`}</span>`
+      ? `<span style="margin-left:8px;font-size:12px;color:${match?'var(--green)':'var(--yellow)'}">${match?'✓ ตรงกับ Volume':`⚠️ ต่างจาก Volume ${count-vol>0?'+':''}${count-vol}`}</span>`
       : '';
     const SHOW_LIMIT = 50;
     const shown = allRecords.slice(0, SHOW_LIMIT);
@@ -1407,10 +1402,10 @@ function renderRateCard(){
         <div><div class="hint">ราคารวม (${boxTag})</div><div style="padding-top:6px;font-weight:700;color:var(--yellow)">${fmt(total)}</div></div>
       </div>
       <details id="item-details-${a.id}" style="margin-top:10px" ${state.expandedItemActivities[a.id] ? 'open' : ''}>
-        <summary style="cursor:pointer;color:var(--blue);font-weight:600">รายการ IMEI/DO NO ทั้งหมด (${count} ชิ้น${recordCount!==count?` จาก ${recordCount} รายการ`:''})${badge}</summary>
+        <summary style="cursor:pointer;color:var(--blue);font-weight:600">📦 รายการ IMEI/DO NO ทั้งหมด (${count} ชิ้น${recordCount!==count?` จาก ${recordCount} รายการ`:''})${badge}</summary>
         <div style="margin-top:12px;padding-top:12px;border-top:1px solid var(--line)">
 
-          <div class="hint" style="margin-bottom:6px;font-weight:600">นำเข้าจากไฟล์ CSV/Excel (Export จาก SWOP MART)</div>
+          <div class="hint" style="margin-bottom:6px;font-weight:600">📤 นำเข้าจากไฟล์ CSV/Excel (Export จาก บริษัท ABC)</div>
           <div class="hint" style="margin-bottom:8px;color:var(--text-2)">รองรับทั้ง .csv และ .xlsx — คอลัมน์: IMEI, Bin, Brand, Model, Status, Ref, When${showMue1Checkbox ? ', Samsung มือ1' : ''} — อัปโหลดได้เลย ระบบจะแยกคอลัมน์ให้อัตโนมัติ</div>
           <div class="row">
             <input type="file" accept=".csv,.xlsx,.xls" id="item-csv-${a.id}" style="max-width:280px">
@@ -1433,7 +1428,7 @@ function renderRateCard(){
 
           <div class="row" style="margin-top:16px;justify-content:space-between;align-items:center">
             <div class="hint" style="margin:0">รายการที่บันทึกไว้ (${recordCount} รายการ, ${count} ชิ้น)</div>
-            ${recordCount > 0 ? `<button class="danger ghost delete-all-items-btn" data-activity-for-item="${a.id}">ลบทั้งหมด (${recordCount} รายการ)</button>` : ''}
+            ${recordCount > 0 ? `<button class="danger ghost delete-all-items-btn" data-activity-for-item="${a.id}">🗑️ ลบทั้งหมด (${recordCount} รายการ)</button>` : ''}
           </div>
           <table style="margin-top:8px">
             <thead><tr><th>วันที่</th><th>IMEI/DO NO</th><th class="num">จำนวน</th><th>ยี่ห้อ</th><th>รุ่น</th><th>Bin</th><th>Status</th><th>ASN/Ref</th><th></th></tr></thead>
@@ -1459,12 +1454,6 @@ function renderRateCard(){
   })).join('');
 
   // ---- กล่องที่ 3: Samsung มือ 1 (p1s/p4s เป็นกิจกรรมแยกเต็มรูปแบบ มี IMEI/import เป็นของตัวเอง ราคาล็อกตามกล่อง 1) + Packaging (log รวมกล่องเดียวกัน ไม่เกี่ยวกับ Samsung) ----
-  const box3CardsHtml = [
-    actP1s && actP1 && activityCardHtml(actP1s, { boxTag:'กล่อง 3', qty: (boxes.box3Items.find(x=>x.name===actP1s.name)?.qty ?? 0) }),
-    actP4s && actP4 && activityCardHtml(actP4s, { boxTag:'กล่อง 3', qty: (boxes.box3Items.find(x=>x.name===actP4s.name)?.qty ?? 0) }),
-    actP6 && activityCardHtml(actP6, { boxTag:'กล่อง 3', qty: (boxes.box3Items.find(x=>x.name===actP6.name)?.qty ?? 0) }),
-  ].filter(Boolean).join('');
-
   const processTotal = boxes.box1Total + boxes.box3Total; // ใช้ยอดจริงตามกล่อง 1+3 (แทนเลขรวมแบบเดิมที่ไม่แยก Samsung มือ1)
 
   const st = state.storage;
@@ -1482,68 +1471,41 @@ function renderRateCard(){
     <tr><td class="num">${i+1}</td><td>${x.name}</td><td class="num">${fmt(x.price)}</td><td class="num">${fmt(x.qty)}</td><td class="num">${fmt(x.price*x.qty)}</td></tr>
   `).join('') || `<tr><td colspan="5" style="color:var(--text-dim)">ไม่มีรายการ</td></tr>`;
 
+
   const boxSummaryHtml = `
-    <div class="section-title" style="margin-top:0">สรุปตาม 3 กล่อง (พรีวิว — เหมือนโครงสร้างในใบแจ้งหนี้)</div>
-    <div class="hint" style="margin-bottom:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
-      พรีวิวนี้นับ IMEI/DO NO <b>ทั้งหมดทุกวันที่</b> (ไม่กรองตามรอบบิล) เพื่อให้เห็นภาพรวมไว — ตอนออกใบแจ้งหนี้จริง ระบบจะกรองเฉพาะช่วงวันที่ของรอบบิลที่ตั้งไว้เท่านั้น ตัวเลขอาจไม่เท่ากัน
-    </div>
-    <div class="wage-box" style="margin-bottom:12px">
-      <b>1) Process ทั่วไป</b>
-      <table style="margin-top:8px"><thead><tr><th class="num">#</th><th>กิจกรรม</th><th class="num">ราคา/ชิ้น</th><th class="num">จำนวน</th><th class="num">รวม</th></tr></thead>
+    <div class="wage-box" style="margin-bottom:16px">
+      <b>1) Process — ค่าบริการกิจกรรม</b>
+      <table style="margin-top:8px"><thead><tr><th>#</th><th>กิจกรรม</th><th class="num">ราคา/ชิ้น</th><th class="num">จำนวน</th><th class="num">รวม</th></tr></thead>
       <tbody>${boxSummaryRows(boxes.box1Items)}</tbody>
-      <tfoot><tr><td colspan="4" style="text-align:right;font-weight:700;color:var(--yellow)">รวมกล่อง 1</td><td class="num" style="font-weight:700;color:var(--yellow)">${fmt(boxes.box1Total)}</td></tr></tfoot></table>
-    </div>
-    <div class="wage-box" style="margin-bottom:12px">
-      <b>2) Storage — ค่าจัดเก็บ</b>
-      <div class="hint" style="margin-top:6px">${rcUseAgeing ? `ใช้ข้อมูล Ageing จริงเดือน ${rcBillingMonth}: ${rcAgeingBill.rows.length} IMEI` : `ประมาณจาก Volume เฉลี่ย`} — รวม <b style="color:var(--yellow)">${fmt(storageTotal)}</b> บาท</div>
+      <tfoot><tr><td colspan="4">รวมค่ากิจกรรม</td><td class="num">${fmt(boxes.box1Total)}</td></tr></tfoot></table>
     </div>
     <div class="wage-box" style="margin-bottom:16px">
-      <b>3) Samsung มือ 1 / New Devices</b>
-      <table style="margin-top:8px"><thead><tr><th class="num">#</th><th>กิจกรรม</th><th class="num">ราคา/ชิ้น</th><th class="num">จำนวน</th><th class="num">รวม</th></tr></thead>
-      <tbody>${boxSummaryRows(boxes.box3Items)}</tbody>
-      <tfoot><tr><td colspan="4" style="text-align:right;font-weight:700;color:var(--yellow)">รวมกล่อง 3</td><td class="num" style="font-weight:700;color:var(--yellow)">${fmt(boxes.box3Total)}</td></tr></tfoot></table>
+      <b>2) Storage — ค่าจัดเก็บ</b>
+      <table style="margin-top:8px"><thead><tr><th>รายการ</th><th class="num">ผลการคำนวณ</th></tr></thead>
+      <tbody>
+        <tr><td>ต้นทุนการจัดเก็บ</td><td class="num">0.1032 บาท/ชิ้น/วัน</td></tr>
+        <tr><td>อัตรากำไรขั้นต้น (GPM)</td><td class="num">35.00%</td></tr>
+        <tr><td><b>ราคาค่าบริการจัดเก็บสินค้า</b></td><td class="num"><b>0.16 บาท/ชิ้น/วัน</b></td></tr>
+      </tbody></table>
+      <div class="hint">${rcUseAgeing ? 'จากข้อมูล Ageing' : 'ประมาณจากจำนวนชิ้น × วัน'} · รวม ${fmt(storageTotal)} บาท${rcAgeingBill.locked ? ' · บิลที่ปิดแล้วใช้อัตราเดิม '+fmt(rcAgeingBill.rate)+' บาท' : ''}</div>
     </div>
-    <div class="hint" style="margin-bottom:20px;text-align:right;font-weight:700;color:var(--yellow)">รวมทั้ง 3 กล่อง: ${fmt(boxes.box1Total + storageTotal + boxes.box3Total)} บาท</div>
+    <div class="hint" style="text-align:right">รวมค่ากิจกรรมและค่าจัดเก็บ: ${fmt(boxes.box1Total + storageTotal)} บาท</div>
   `;
 
   return `
     <h2>Rate Card — อัตราค่าบริการ</h2>
-    <p class="hint">ราคาเริ่มต้น 5 กิจกรรมใช้ต้นทุนแรงงาน ÷ 0.65 ปัดขึ้นเป็นสตางค์ เพื่อเป้าหมายส่วนต่าง 35% ก่อนวัสดุและค่าใช้จ่ายอื่น ราคาเหล่านี้ใช้คำนวณรายการใหม่และใบแจ้งหนี้จริง</p>
+
     ${legacyBillingNotice()}
 
     ${boxSummaryHtml}
-    <h3>1) Process ทั่วไป — กล่อง 1</h3>
-    <div class="hint" style="margin-bottom:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
-      แต่ละกิจกรรม กด <b>"รายการ IMEI/DO NO"</b> เพื่อขยายดูหรือเพิ่มเลขของกิจกรรมนั้นได้โดยตรง ส่วนสินค้า Samsung มือ 1 ให้บันทึกในกรอบของกล่อง 3 เพื่อไม่ให้ยอด Process ปนกับสินค้ามือสอง
-    </div>
+    <h3>📦 รายการกิจกรรม</h3>
     ${box1CardsHtml}
     <div class="hint" style="margin:8px 0 20px;text-align:right;font-weight:700;color:var(--yellow)">รวมกล่อง 1: ${fmt(boxes.box1Total)}</div>
 
-    <h3>3) Samsung มือ 1 / New Devices — กล่อง 3</h3>
-    <div class="hint" style="margin-bottom:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--yellow)">
-      ใช้สำหรับคิดราคาค่ากิจกรรมของสินค้า Samsung มือ 1 โดยเฉพาะ — มีกรอบ <b>รับสินค้าเข้า (Samsung มือ 1)</b>, <b>DEMO (Samsung มือ 1)</b> และ <b>Packaging</b> แต่ละกรอบกำหนดราคา/ชิ้น, Volume/เดือน และรายการ DO NO/IMEI แยกจากกล่อง 1 ได้
-    </div>
-    ${box3CardsHtml}
-    <div class="hint" style="margin:8px 0 20px;text-align:right;font-weight:700;color:var(--yellow)">รวมกล่อง 3: ${fmt(boxes.box3Total)}</div>
-
-    <div class="hint" style="margin:8px 0 20px;text-align:right;font-weight:700;color:var(--yellow)">รวมกล่อง 1 + 3 (ไม่รวม Storage): ${fmt(processTotal)}</div>
-
-    <div class="section-title">2) Storage — กล่อง 2${rcUseAgeing ? ` — ใช้ข้อมูล Ageing จริง (เดือน ${rcBillingMonth})` : ' (ประมาณจาก Volume เฉลี่ย)'}</div>
-    ${rcUseAgeing ? `<div class="hint" style="margin-bottom:10px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--green)">
-      พบข้อมูล Ageing ของเดือนนี้ที่หน้า "Ageing (ค่าจัดเก็บ)" — ยอด Storage ด้านล่างนี้และในใบแจ้งหนี้ <b>ใช้ตัวเลขจริงจาก Ageing แทนค่าประมาณด้านล่างแล้วโดยอัตโนมัติ</b> (${rcAgeingBill.rows.length} IMEI, รวม ${rcAgeingBill.totalDays} วัน = ${fmt(rcAgeingBill.totalCost)} บาท)
-    </div>` : `<div class="hint" style="margin-bottom:10px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--yellow)">
-      ยังไม่มีข้อมูล Ageing ของเดือนนี้ (${rcBillingMonth}) — ใช้ตัวเลขประมาณจากช่องด้านล่างไปก่อน ถ้ายากได้ยอดแม่นยำ ไปกรอกวันที่รับเข้า/ออกของแต่ละ IMEI ที่หน้า "Ageing (ค่าจัดเก็บ)"
-    </div>`}
-
+    <div class="section-title">📅 ข้อมูลค่าจัดเก็บ</div>
     <div class="wage-box" style="margin-bottom:16px">
-      <div class="hint" style="margin-bottom:8px;font-weight:600">นำเข้า Ageing จากไฟล์ (Excel/CSV จากระบบหลัก SWOP MART)</div>
-      <div class="hint" style="margin-bottom:8px;color:var(--text-2)">
-        รองรับ 3 ฟอร์แมต — ระบบตรวจจับให้อัตโนมัติจากหัวคอลัมน์:<br>
-        (1) ไฟล์ <b>ASN / Withdraw</b> ของ SWOP MART ตรงๆ (คอลัมน์ <b>IMEI, Status, When</b>) — แถว Status="asn_received" = วันรับเข้า, แถวอื่นๆ (เช่น customer_demo) = วันเบิกออก
-        (เบิกออกแล้ว = ปิดรอบทันทีที่วันเบิกครั้งแรก ไม่ว่าจะเบิกกี่ครั้ง ถือว่าออกจากคลังไปขายแล้ว) <b>ต้องอัปโหลดไฟล์ Withdraw แบบสะสมทั้งหมดทุกครั้ง ไม่ใช่แค่เดือนล่าสุด</b> เพื่อให้ได้วันเบิกครั้งแรกสุดถูกต้อง<br>
-        (2) ไฟล์ <b>Import_เข้าเว็บแอป</b> จาก Excel Ageing Workbook ที่คำนวณ/กรองมาแล้ว (คอลัมน์ <b>IMEI, Status, Entry_Date, Exit_Date</b>) — นำเข้าตรงๆ ไม่คำนวณซ้ำ<br>
-        (3) ไฟล์ <b>wms_inventory</b> แบบเดิม — จับคอลัมน์ <b>IMEI</b> + <b>WH Received Date</b> (แปลงวันที่ไทย พ.ศ. ให้อัตโนมัติ) ก็รองรับหัวคอลัมน์อื่นด้วย เช่น <b>imei</b>/<b>received_date</b>/"วันที่รับเข้า"
-      </div>
+      <div class="hint" style="margin-bottom:8px;font-weight:600">📥 นำเข้า Ageing จากไฟล์ (Excel/CSV จากระบบหลัก บริษัท ABC)</div>
+      <div class="hint">รองรับ Excel/CSV: ASN/Withdraw, Ageing Workbook และ Inventory — ไฟล์ Withdraw ต้องเป็นข้อมูลสะสมทั้งหมด</div>
       <div class="row" style="align-items:flex-end;margin-bottom:8px">
         <div class="checkbox-field" style="padding-top:0"><input type="checkbox" id="ageing-import-fullsnap"><label for="ageing-import-fullsnap" style="cursor:pointer">ไฟล์นี้คือ<b>สต๊อกทั้งหมด</b>ณ ปัจจุบัน (เฉพาะไฟล์ wms_inventory แบบเดิม — เปิดถ้าใช่ ระบบจะถือว่า IMEI เดิมที่หายไปจากไฟล์นี้ = ขายออกไปแล้ว ช่องนี้ไม่มีผลกับไฟล์ ASN/Withdraw)</label></div>
       </div>
@@ -1551,7 +1513,7 @@ function renderRateCard(){
         <div><div class="hint">วันที่ของไฟล์นี้ (ใช้เป็นวันที่ขายออก ถ้าเปิดตัวเลือกด้านบน)</div><input type="date" id="ageing-import-reportdate" value="${todayStr()}"></div>
         <div><input type="file" accept=".csv,.xlsx,.xls" id="ageing-import-file" style="max-width:280px"></div>
         <button id="ageing-import-btn">นำเข้าไฟล์</button>
-        <button id="ageing-clear-btn" style="background:#b91c1c">ลบข้อมูลทั้งหมดในหน้านี้</button>
+        <button id="ageing-clear-btn" style="background:#b91c1c">🗑️ ลบข้อมูลทั้งหมดในหน้านี้</button>
       </div>
       <div id="ageing-import-preview"></div>
     </div>
@@ -1562,7 +1524,7 @@ function renderRateCard(){
         <tr>
           <td>Storage — ค่าจัดเก็บ</td>
           <td>THB/Unit/Day</td>
-          <td class="num"><input type="number" step="0.01" value="${st.price}" data-storage="price" style="width:80px"></td>
+          <td class="num"><span>0.16</span></td>
           <td class="num"><input type="number" value="${st.volume}" data-storage="volume" style="width:100px"></td>
           <td class="num"><input type="number" value="${st.days}" data-storage="days" style="width:80px"></td>
           <td class="num">${fmt(estimateStorageTotal)}</td>
@@ -1576,9 +1538,9 @@ function renderRateCard(){
       <div class="card cost"><div class="big">${fmt(fixedCost)}</div><div class="label">ต้นทุนคงที่/เดือน (จากหน้าต้นทุนพนักงาน)</div></div>
       <div class="card ${profit>=0?'profit':'loss'}"><div class="big">${fmt(profit)}</div><div class="label">${profit>=0?'กำไร':'ขาดทุน'} (บาท)</div></div>
     </div>
-    <div class="hint">แก้ "Volume/เดือน" ของแต่ละกิจกรรม หรือราคา/จำนวนวันของ Storage ได้ตรงนี้เลย ใช้สำหรับสรุปคิดราคาลูกค้าตอนสิ้นเดือน — ต้นทุนคงที่ดึงมาจากหน้า "ต้นทุนพนักงาน" อัตโนมัติ</div>
 
-    <div class="section-title">ออกใบแจ้งหนี้ลูกค้า (Invoice) — Export PDF</div>
+
+    <div class="section-title">🧾 ออกใบแจ้งหนี้ลูกค้า (Invoice) — Export PDF</div>
     <div class="wage-box" style="margin-bottom:16px">
       <div class="row">
         <div><div class="hint">ชื่อลูกค้า</div><input type="text" id="inv-customer-name" value="${state.invoiceInfo.customerName}" placeholder="บริษัทลูกค้า จำกัด" style="width:220px"></div>
@@ -1605,9 +1567,9 @@ function renderRateCard(){
         </div>
       </div>
       <div class="row" style="margin-top:14px">
-        <button id="export-invoice-pdf" style="background:var(--yellow)">Export PDF (ใบแจ้งหนี้)</button>
+        <button id="export-invoice-pdf" style="background:var(--yellow)">🖨️ Export PDF (ใบแจ้งหนี้)</button>
       </div>
-      <div class="hint" style="margin-top:8px;color:var(--text-2)">กดแล้วเบราว์เซอร์จะเปิดหน้าต่างพิมพ์ — เลือกปลายทางเป็น "Save as PDF" (หรือ "บันทึกเป็น PDF") แทนการพิมพ์จริง ก็จะได้ไฟล์ PDF ใบแจ้งหนี้ ยอดเงินคำนวณจากตาราง Process/Storage ด้านบนอัตโนมัติ รวม VAT 7% ให้เสร็จ ถ้ามีข้อมูล IMEI บันทึกไว้ (กดขยาย "รายการ IMEI" ในแต่ละกิจกรรมด้านบน) ตรงกับช่วงรอบบิลนี้ จะแนบเป็นหน้าแยกต่อท้าย 1 หน้า/กิจกรรมให้อัตโนมัติ และถ้ามีข้อมูล Ageing ที่ต้องคิดเงินเดือนนี้ จะแนบหน้ารายละเอียด Storage ต่อ IMEI (แยกคอลัมน์ Ageing สินค้าทั้งหมด vs Ageing ที่เรียกเก็บเดือนนี้) ต่อท้ายให้อีก 1 หน้าด้วย</div>
+
     </div>
 
     <div id="invoice-print-area">${buildInvoiceHTML()}</div>
@@ -1721,7 +1683,7 @@ function renderActivityBreakdown(){
   return `
     <h3>สรุปแยกตามกิจกรรม — รายวัน (แสดงทีละรอบ + รวมต่อกิจกรรม)</h3>
 
-    <div class="section-title" style="margin-top:0">สรุปประจำวัน (ต้นทุนจริง) — ใช้คนกี่คน ต้นทุนเท่าไหร่ ขายได้เท่าไหร่ กำไรหรือไม่</div>
+    <div class="section-title" style="margin-top:0">📋 สรุปประจำวัน (ต้นทุนจริง) — ใช้คนกี่คน ต้นทุนเท่าไหร่ ขายได้เท่าไหร่ กำไรหรือไม่</div>
     <div class="hint" style="margin-bottom:10px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
       "ต้นทุน" ในตารางนี้คือ<b>เงินจริงที่ต้องจ่าย</b>สำหรับคนที่ใช้วันนั้น — ประจำ/Temp คิดเต็มชั่วโมงทำงาน/วันของแต่ละกลุ่ม (ปรับได้ที่หน้า "ต้นทุนพนักงาน") ส่วน <b>"คนเสริม"</b> คิดตามจำนวนชั่วโมงที่ระบุจริง เพราะคนเสริมมักมาช่วยแค่บางช่วง ไม่เต็มวัน — พิมพ์ตัวเลขในช่องเพื่อแก้ค่าเอง (ค่าสีจางในช่องคือค่าที่ระบบเดาจากบันทึกงาน ถ้าไม่พิมพ์อะไรจะใช้ค่านั้น)
     </div>
@@ -1756,7 +1718,7 @@ function renderActivityBreakdown(){
       </table>`;
     })()}
 
-    <div class="section-title">สรุปรายเดือน (ต้นทุนจริง) — รวมทุกวันในเดือนนั้น</div>
+    <div class="section-title">📆 สรุปรายเดือน (ต้นทุนจริง) — รวมทุกวันในเดือนนั้น</div>
     ${(()=>{
       const monthly = monthlyRealSummary();
       if(!monthly.length) return `<div class="empty">ยังไม่มีบันทึกงาน</div>`;
@@ -1774,7 +1736,7 @@ function renderActivityBreakdown(){
       </table>`;
     })()}
 
-    <div class="section-title">สรุปแยกตามกิจกรรม</div>
+    <div class="section-title">📊 สรุปแยกตามกิจกรรม</div>
     <div class="row" style="margin-bottom:14px">
       <div><div class="hint" style="margin-bottom:3px">ดูเฉพาะวันที่</div>
         <select id="activity-date-filter">${dateOptions}</select>
@@ -1805,7 +1767,7 @@ function renderWorkforcePlan(){
 
   if(!state.logs.length){
     return `
-    <div class="section-title" style="margin-top:0">วางแผนกำลังคน</div>
+    <div class="section-title" style="margin-top:0">📅 วางแผนกำลังคน</div>
     <div class="hint" style="padding:14px;background:var(--panel-2);border-radius:8px">
       ยังไม่มีข้อมูลบันทึกงานประจำวันเลย — บันทึกงานสักระยะ (แนะนำอย่างน้อย 2-3 สัปดาห์) แล้วกลับมาดูหน้านี้อีกครั้ง ระบบจะบอกเองว่าควรเตรียมคนกี่คน
     </div>`;
@@ -1836,7 +1798,7 @@ function renderWorkforcePlan(){
   }).join('');
 
   return `
-    <div class="section-title" style="margin-top:0">วางแผนกำลังคน</div>
+    <div class="section-title" style="margin-top:0">📅 วางแผนกำลังคน</div>
     <div class="hint" style="padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue);margin-bottom:16px">
       ดูจากงานที่เคยทำมาก่อนหน้านี้ทั้งหมด แล้วบอกว่า "วันที่งานหนักที่สุด" ของแต่ละวันในสัปดาห์ ต้องใช้คนกี่คนถึงจะทำทัน (บวกเผื่อเหตุการณ์ไม่คาดคิดให้แล้ว)
     </div>
@@ -1847,7 +1809,7 @@ function renderWorkforcePlan(){
       <div class="card ${isEnough?'profit':'loss'}"><div class="big">${isEnough?'เพียงพอ ✓':`ขาด ${overallRecommended-currentTeam} คน`}</div><div class="label">สรุปผล</div></div>
     </div>
 
-    <div class="section-title">แต่ละวันในสัปดาห์ ควรเตรียมคนกี่คน</div>
+    <div class="section-title">👀 แต่ละวันในสัปดาห์ ควรเตรียมคนกี่คน</div>
     <div class="grid" style="display:grid;grid-template-columns:repeat(auto-fit,minmax(130px,1fr));gap:12px;margin-bottom:20px">
       ${weekdayCards}
     </div>
@@ -1857,12 +1819,12 @@ function renderWorkforcePlan(){
     </div>
 
     ${heaviestMonth ? `
-    <div class="section-title">เดือนที่งานหนักที่สุดที่เคยเจอ</div>
+    <div class="section-title">📈 เดือนที่งานหนักที่สุดที่เคยเจอ</div>
     <div class="hint" style="padding:12px;background:var(--panel-2);border-radius:8px;margin-bottom:20px">
       เดือน <b style="color:var(--text)">${heaviestMonth.month}</b> — วันที่หนักที่สุดคือ <b style="color:var(--text)">${heaviestMonth.peakDate}</b> ซึ่งต้องใช้คนถึง <b style="color:var(--yellow)">${heaviestMonth.recommended} คน</b> ถึงจะทำทัน
     </div>` : ''}
 
-    <div class="section-title">ปรับค่า</div>
+    <div class="section-title">⚙️ ปรับค่า</div>
     <div class="row" style="margin-bottom:12px;align-items:flex-end">
       <div><div class="hint">ทำงานกี่ชั่วโมง/กะ</div><input type="number" step="0.5" value="${shiftHours}" data-timesetting="hoursPerDay" style="width:120px"></div>
       <div><div class="hint">เผื่อเหตุการณ์ไม่คาดคิด (%)</div><input type="number" step="1" value="${bufferPct}" data-plan="bufferPct" style="width:120px"></div>
@@ -1886,7 +1848,7 @@ function renderAgeing(){
       : `<input type="date" data-mark-removed="${r.id}" style="width:150px" title="เลือกวันที่ออกจากคลัง">`;
     const isFallback = r.basis && /fallback/i.test(r.basis);
     const basisBadge = isFallback
-      ? `<span title="ไม่มีวันที่รับเข้าจริงบันทึกไว้ ระบบใช้วันที่สร้าง record แทน — วันที่นี้อาจคลาดเคลื่อนจากวันที่รับเข้าจริง" style="margin-left:6px;font-size:11px;color:var(--yellow);border:1px solid var(--yellow);border-radius:4px;padding:1px 5px">ประมาณ</span>`
+      ? `<span title="ไม่มีวันที่รับเข้าจริงบันทึกไว้ ระบบใช้วันที่สร้าง record แทน — วันที่นี้อาจคลาดเคลื่อนจากวันที่รับเข้าจริง" style="margin-left:6px;font-size:11px;color:var(--yellow);border:1px solid var(--yellow);border-radius:4px;padding:1px 5px">⚠️ ประมาณ</span>`
       : (r.basis ? `<span style="margin-left:6px;font-size:11px;color:var(--green)">✓</span>` : '');
     return `<tr>
       <td style="font-family:'JetBrains Mono',monospace">${r.imei}</td>
@@ -1912,13 +1874,13 @@ function renderAgeing(){
   const billMoreNote = bill.rows.length > SHOW_LIMIT ? `<div class="hint" style="margin-top:6px;color:var(--text-2)">แสดง ${SHOW_LIMIT} รายการ จากทั้งหมด ${bill.rows.length} รายการที่ต้องคิดเงินเดือนนี้ (ยอดรวมด้านบนคิดครบทุกรายการแล้ว)</div>` : '';
 
   return `
-    <div class="section-title" style="margin-top:0">Ageing สินค้า — ค่าจัดเก็บแบบแม่นยำต่อ IMEI</div>
+    <div class="section-title" style="margin-top:0">📅 Ageing สินค้า — ค่าจัดเก็บแบบแม่นยำต่อ IMEI</div>
     <div class="hint" style="margin-bottom:16px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
-      ระบบนี้จำลองการทำงานของระบบหลัก (SWOP MART) ที่จะรู้ Ageing ของแต่ละ IMEI ตั้งแต่วันรับเข้าจนถึงวันปัจจุบัน (หรือวันที่ขายออก) แล้วคิดค่าจัดเก็บตามจำนวนวันจริงที่ค้างอยู่ในแต่ละรอบบิล (เดือน) — ถ้า IMEI ไหนขายออกกลางเดือน จะคิดแค่ถึงวันที่ขายเท่านั้น ไม่คิดทั้งเดือน
+      ระบบนี้จำลองการทำงานของระบบหลัก (บริษัท ABC) ที่จะรู้ Ageing ของแต่ละ IMEI ตั้งแต่วันรับเข้าจนถึงวันปัจจุบัน (หรือวันที่ขายออก) แล้วคิดค่าจัดเก็บตามจำนวนวันจริงที่ค้างอยู่ในแต่ละรอบบิล (เดือน) — ถ้า IMEI ไหนขายออกกลางเดือน จะคิดแค่ถึงวันที่ขายเท่านั้น ไม่คิดทั้งเดือน
     </div>
 
     <div class="wage-box" style="margin-bottom:20px">
-      <div class="hint" style="margin-bottom:8px;font-weight:600">บันทึกสินค้าเข้าคลัง (วันที่รับเข้า)</div>
+      <div class="hint" style="margin-bottom:8px;font-weight:600">➕ บันทึกสินค้าเข้าคลัง (วันที่รับเข้า)</div>
       <div class="row">
         <div><div class="hint">วันที่รับเข้า</div><input type="date" id="ageing-received-date" value="${todayStr()}"></div>
       </div>
@@ -1932,15 +1894,8 @@ function renderAgeing(){
     </div>
 
     <div class="wage-box" style="margin-bottom:20px">
-      <div class="hint" style="margin-bottom:8px;font-weight:600">นำเข้าจากไฟล์ (Excel/CSV จากระบบหลัก SWOP MART)</div>
-      <div class="hint" style="margin-bottom:8px;color:var(--text-2)">
-        รองรับ 3 ฟอร์แมต — ระบบตรวจจับให้อัตโนมัติจากหัวคอลัมน์:<br>
-        (1) ไฟล์ <b>ASN / Withdraw</b> ของ SWOP MART ตรงๆ (คอลัมน์ <b>IMEI, Status, When</b>) — แถว Status="asn_received" = วันรับเข้า, แถวอื่นๆ (เช่น customer_demo) = วันเบิกออก
-        (เบิกออกแล้ว = ปิดรอบทันทีที่วันเบิกครั้งแรก ไม่ว่าจะเบิกกี่ครั้ง ถือว่าออกจากคลังไปขายแล้ว) <b>ต้องอัปโหลดไฟล์ Withdraw แบบสะสมทั้งหมดทุกครั้ง ไม่ใช่แค่เดือนล่าสุด</b> เพื่อให้ได้วันเบิกครั้งแรกสุดถูกต้อง<br>
-        (2) ไฟล์ <b>Import_เข้าเว็บแอป</b> จาก Excel Ageing Workbook ที่คำนวณ/กรองมาแล้ว (คอลัมน์ <b>IMEI, Status, Entry_Date, Exit_Date</b>) — นำเข้าตรงๆ ไม่คำนวณซ้ำ<br>
-        (3) ไฟล์ <b>wms_inventory</b> แบบเดิม — จับคอลัมน์ <b>IMEI</b> + <b>WH Received Date</b> (แปลงวันที่ไทย พ.ศ. ให้อัตโนมัติ) ก็รองรับหัวคอลัมน์อื่นด้วย เช่น <b>imei</b>/<b>received_date</b>/"วันที่รับเข้า"
-        ถ้า IMEI ที่นำเข้าซ้ำกับที่มีอยู่แล้วในระบบ จะ<b>อัปเดตทับ</b>ด้วยข้อมูลใหม่
-      </div>
+      <div class="hint" style="margin-bottom:8px;font-weight:600">📥 นำเข้าจากไฟล์ (Excel/CSV จากระบบหลัก บริษัท ABC)</div>
+      <div class="hint">รองรับ Excel/CSV: ASN/Withdraw, Ageing Workbook และ Inventory — ไฟล์ Withdraw ต้องเป็นข้อมูลสะสมทั้งหมด</div>
       <div class="row" style="align-items:flex-end;margin-bottom:8px">
         <div class="checkbox-field" style="padding-top:0"><input type="checkbox" id="ageing-import-fullsnap"><label for="ageing-import-fullsnap" style="cursor:pointer">ไฟล์นี้คือ<b>สต๊อกทั้งหมด</b>ณ ปัจจุบัน (เฉพาะไฟล์ wms_inventory แบบเดิม — เปิดถ้าใช่ ระบบจะถือว่า IMEI เดิมที่หายไปจากไฟล์นี้ = ขายออกไปแล้ว ช่องนี้ไม่มีผลกับไฟล์ ASN/Withdraw)</label></div>
       </div>
@@ -1948,25 +1903,25 @@ function renderAgeing(){
         <div><div class="hint">วันที่ของไฟล์นี้ (ใช้เป็นวันที่ขายออก ถ้าเปิดตัวเลือกด้านบน)</div><input type="date" id="ageing-import-reportdate" value="${todayStr()}"></div>
         <div><input type="file" accept=".csv,.xlsx,.xls" id="ageing-import-file" style="max-width:280px"></div>
         <button id="ageing-import-btn">นำเข้าไฟล์</button>
-        <button id="ageing-clear-btn" style="background:#b91c1c">ลบข้อมูลทั้งหมดในหน้านี้</button>
+        <button id="ageing-clear-btn" style="background:#b91c1c">🗑️ ลบข้อมูลทั้งหมดในหน้านี้</button>
       </div>
       <div id="ageing-import-preview"></div>
     </div>
 
-    <div class="section-title">คำนวณค่าจัดเก็บรายเดือน</div>
+    <div class="section-title">🗓️ คำนวณค่าจัดเก็บรายเดือน</div>
     <div class="wage-box" style="margin-bottom:16px">
       <div class="row" style="align-items:flex-end">
         <div><div class="hint">เลือกเดือนที่ต้องการคิดบิล</div><input type="month" id="ageing-month" value="${selectedMonth}"></div>
         <div><div class="hint">อัตราค่าจัดเก็บ (บาท/ชิ้น/วัน)</div><div style="padding-top:8px;font-weight:700;color:var(--yellow)">${fmt(bill.rate)}</div></div>
         <div>
           ${bill.locked
-            ? `<button class="danger ghost" id="unlock-ageing-month">ปลดล็อกเดือนนี้</button>`
-            : `<button id="lock-ageing-month">ปิดบิลเดือนนี้ (ล็อกตัวเลข)</button>`}
+            ? `<button class="danger ghost" id="unlock-ageing-month">🔓 ปลดล็อกเดือนนี้</button>`
+            : `<button id="lock-ageing-month">🔒 ปิดบิลเดือนนี้ (ล็อกตัวเลข)</button>`}
         </div>
       </div>
       <div class="hint" style="margin-top:8px;color:var(--text-2)">ใช้อัตราจากหน้า "Rate Card" (ช่อง "ราคา/ชิ้น/วัน" ในตาราง Storage) — ไปแก้ที่นั่นได้ถ้าอยากเปลี่ยนอัตรา</div>
       ${bill.locked
-        ? `<div class="hint" style="margin-top:8px;padding:8px;background:var(--panel-2);border-radius:6px;border-left:3px solid var(--green)">เดือนนี้ <b>ปิดบิลแล้ว</b> เมื่อ ${bill.lockedAt}${bill.invoiceNo?` (อ้างอิงใบแจ้งหนี้เลขที่ ${bill.invoiceNo})`:''} — ตัวเลขด้านล่างถูก freeze ไว้ ไม่เปลี่ยนตามข้อมูลที่แก้ไขทีหลัง ถ้าต้องแก้ไขข้อมูลของเดือนนี้ กด "ปลดล็อก" ก่อน</div>`
+        ? `<div class="hint" style="margin-top:8px;padding:8px;background:var(--panel-2);border-radius:6px;border-left:3px solid var(--green)">🔒 เดือนนี้ <b>ปิดบิลแล้ว</b> เมื่อ ${bill.lockedAt}${bill.invoiceNo?` (อ้างอิงใบแจ้งหนี้เลขที่ ${bill.invoiceNo})`:''} — ตัวเลขด้านล่างถูก freeze ไว้ ไม่เปลี่ยนตามข้อมูลที่แก้ไขทีหลัง ถ้าต้องแก้ไขข้อมูลของเดือนนี้ กด "ปลดล็อก" ก่อน</div>`
         : `<div class="hint" style="margin-top:8px;color:var(--text-2)">ยังไม่ได้ปิดบิลเดือนนี้ — ตัวเลขด้านล่างคำนวณสดจากข้อมูลปัจจุบัน จะเปลี่ยนได้ถ้าแก้ไข Ageing ทีหลัง กด "ปิดบิลเดือนนี้" ตอนออกใบแจ้งหนี้จริงเพื่อ freeze ตัวเลขไว้กันคิดซ้ำ/ตัวเลขขยับ</div>`}
     </div>
 
@@ -1984,7 +1939,7 @@ function renderAgeing(){
     </table>
     ${billMoreNote}
 
-    <div class="section-title">รายการสินค้าที่ติดตามอยู่ทั้งหมด (${trackedSorted.length} รายการ)</div>
+    <div class="section-title">📋 รายการสินค้าที่ติดตามอยู่ทั้งหมด (${trackedSorted.length} รายการ)</div>
     <div class="hint" style="margin-bottom:10px;color:var(--text-2)">คลิกช่องวันที่ในคอลัมน์ "สถานะ" เพื่อบันทึกว่าสินค้าออกจากคลังวันไหน (เช่น ขายออกแล้ว) — ถ้ายังไม่กรอก ระบบจะถือว่ายังอยู่ในคลัง</div>
     <table>
       <thead><tr><th>IMEI</th><th>วันที่รับเข้า</th><th>สถานะ / วันที่ออก</th><th class="num">Ageing ปัจจุบัน</th><th></th></tr></thead>
@@ -2651,7 +2606,7 @@ function attachHandlers(){
           }
         });
       } else if(useAsnWithdrawFormat){
-        // ---- ฟอร์แมต ASN / Withdraw ของ SWOP MART (IMEI, Brand, Model, Status, Ref, When) ----
+        // ---- ฟอร์แมต ASN / Withdraw ของ บริษัท ABC (IMEI, Brand, Model, Status, Ref, When) ----
         const { asnItems, withdrawItems, skipped: sk } = rowsToAgeingItemsFromAsnWithdraw(parsedRows);
         skipped = sk;
         if(!asnItems.length && !withdrawItems.length){
@@ -2824,7 +2779,7 @@ function attachHandlers(){
     }catch(e){
       console.error(e);
       showToast(`ปิดบิลไม่สำเร็จ: ${e && e.message ? e.message : 'เช็คว่าสร้างตาราง storage_billing_locks แล้วหรือยัง'}`);
-      lockBtn.disabled = false; lockBtn.textContent = 'ปิดบิลเดือนนี้ (ล็อกตัวเลข)';
+      lockBtn.disabled = false; lockBtn.textContent = '🔒 ปิดบิลเดือนนี้ (ล็อกตัวเลข)';
     }
   };
 
@@ -2844,7 +2799,7 @@ function attachHandlers(){
     }catch(e){
       console.error(e);
       showToast(`ปลดล็อกไม่สำเร็จ: ${e && e.message ? e.message : ''}`);
-      unlockBtn.disabled = false; unlockBtn.textContent = 'ปลดล็อกเดือนนี้';
+      unlockBtn.disabled = false; unlockBtn.textContent = '🔓 ปลดล็อกเดือนนี้';
     }
   };
 
@@ -2963,7 +2918,7 @@ function attachHandlers(){
       if(suspicious.length){
         const preview = suspicious.slice(0,5).map(r=>`${r.imei} (${r.imei.length} หลัก)`).join('\n');
         const more = suspicious.length > 5 ? `\n...และอีก ${suspicious.length-5} รายการ` : '';
-        const ok = confirm(`พบ ${suspicious.length} รายการที่จำนวนหลักไม่ตรงมาตรฐาน (IMEI ควรมี 15 หลัก, DO NO ควรมี 10 หลัก):\n\n${preview}${more}\n\nยืนยันบันทึกต่อไหม?`);
+        const ok = confirm(`⚠️ พบ ${suspicious.length} รายการที่จำนวนหลักไม่ตรงมาตรฐาน (IMEI ควรมี 15 หลัก, DO NO ควรมี 10 หลัก):\n\n${preview}${more}\n\nยืนยันบันทึกต่อไหม?`);
         if(!ok) return;
       }
       try{
