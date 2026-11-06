@@ -4,16 +4,65 @@ const SUPABASE_KEY = 'sb_publishable_g6lMR25M9TFdSmfVaPn5qw_4xhM5VXz';
 const sb = supabase.createClient(SUPABASE_URL, SUPABASE_KEY);
 
 const DEFAULT_ACTIVITIES = [
-  {id:'p1', name:'รับสินค้าเข้า', price:3.5, standardWorkers:2, minutesPerUnit:2, monthlyVolume:1087, standardRegularWorkers:2, standardTempWorkers:0, sortOrder:1},
-  {id:'p2', name:'Deep QC', price:2.5, standardWorkers:2, minutesPerUnit:0.5, monthlyVolume:3017, standardRegularWorkers:2, standardTempWorkers:0, sortOrder:2},
-  {id:'p3', name:'Return', price:5.5, standardWorkers:2, minutesPerUnit:1, monthlyVolume:7574, standardRegularWorkers:2, standardTempWorkers:0, sortOrder:3}, // รวมของเดิม "รับคืน (PB-02 ถึง PB-05)" (2.5) + "รับคืนcustomer_demo" (3.0) เป็นกิจกรรมเดียว ราคา = ผลรวม
-  {id:'p4', name:'DEMO', price:3.5, standardWorkers:3, minutesPerUnit:2.22, monthlyVolume:6586, standardRegularWorkers:3, standardTempWorkers:0, sortOrder:4},
-  // Process ของสินค้า Samsung มือ 1 แยกจากสินค้ามือสอง เพื่อกำหนดราคาและ Volume ของตัวเอง
-  {id:'p1s', name:'รับสินค้าเข้า (Samsung มือ 1)', price:3.5, standardWorkers:2, minutesPerUnit:2, monthlyVolume:0, standardRegularWorkers:2, standardTempWorkers:0, sortOrder:10},
-  {id:'p4s', name:'DEMO (Samsung มือ 1)', price:3.5, standardWorkers:3, minutesPerUnit:2.22, monthlyVolume:0, standardRegularWorkers:3, standardTempWorkers:0, sortOrder:11},
-  {id:'p6', name:'Packaging', price:3.0, standardWorkers:2, minutesPerUnit:1, monthlyVolume:0, standardRegularWorkers:2, standardTempWorkers:0, sortOrder:12},
+  {
+    "id": "wc35_1",
+    "name": "การรับสินค้าเข้า",
+    "price": 10.64,
+    "standardWorkers": 2,
+    "minutesPerUnit": 2,
+    "monthlyVolume": 0,
+    "standardRegularWorkers": 0,
+    "standardTempWorkers": 2,
+    "sortOrder": 1
+  },
+  {
+    "id": "wc35_2",
+    "name": "การเตรียมสินค้าให้ฝ่าย QC",
+    "price": 5.33,
+    "standardWorkers": 2,
+    "minutesPerUnit": 1,
+    "monthlyVolume": 0,
+    "standardRegularWorkers": 0,
+    "standardTempWorkers": 2,
+    "sortOrder": 2
+  },
+  {
+    "id": "wc35_3",
+    "name": "การรับคืนสินค้าจาก QC เข้า Bin Location พร้อมขาย",
+    "price": 5.33,
+    "standardWorkers": 2,
+    "minutesPerUnit": 1,
+    "monthlyVolume": 0,
+    "standardRegularWorkers": 0,
+    "standardTempWorkers": 2,
+    "sortOrder": 3
+  },
+  {
+    "id": "wc35_4",
+    "name": "การเตรียมสินค้าให้ฝ่ายขาย",
+    "price": 18.48,
+    "standardWorkers": 3,
+    "minutesPerUnit": 2,
+    "monthlyVolume": 0,
+    "standardRegularWorkers": 1,
+    "standardTempWorkers": 2,
+    "sortOrder": 4
+  },
+  {
+    "id": "wc35_5",
+    "name": "การรับสินค้าคืนจากฝ่ายขาย",
+    "price": 5.33,
+    "standardWorkers": 2,
+    "minutesPerUnit": 1,
+    "monthlyVolume": 0,
+    "standardRegularWorkers": 0,
+    "standardTempWorkers": 2,
+    "sortOrder": 5
+  }
 ];
-// p1s/p4s อยู่ในค่าเริ่มต้นโดยตรง เพื่อให้กรอบ Process ของ Samsung มือ 1 แสดงเสมอ แม้ฐานข้อมูลเดิมยังไม่มีรายการนี้
+const RETIRED_ACTIVITY_IDS = new Set(['p1','p2','p3','p4','p5']);
+function activeActivities(){ return state.activities.filter(a=>!RETIRED_ACTIVITY_IDS.has(a.id)); }
+function primaryActivities(){ return DEFAULT_ACTIVITIES.map(d=>state.activities.find(a=>a.id===d.id)).filter(Boolean); }
 
 let state = { activities: [], logs: [], employees: [], manualHeadcounts: {}, itemRecords: [], storageAgeing: [], storageBillingLocks: [], tab: document.body.dataset.page || 'dashboard',
   timeSettings: { hoursPerDay: 8, daysPerMonth: 26, regularHoursPerDay: 8.5, tempHoursPerDay: 8 },
@@ -174,113 +223,19 @@ async function loadFromSupabase(){
       pageNeeds('storage_billing_locks') ? readAllRows('storage_billing_locks', 'month') : noRows()
     ]);
 
-    // activities: seed defaults if table is empty
-    if(actRes.data && actRes.data.length){
-      state.activities = actRes.data.map(rowToActivity);
-      const missing = DEFAULT_ACTIVITIES.filter(def => !state.activities.find(a=>a.id===def.id));
-      if(missing.length){
-        await sbw(sb.from('activities').insert(missing.map(activityToRow)));
-        state.activities = state.activities.concat(missing);
-      }
-      // one-time fix: rename old activity names to match SWOP MART dashboard terminology, and backfill sortOrder for rows saved before it existed
-      const RENAME_MAP = {
-        // ชื่อดิบตั้งต้น (ก่อนรอบ rename แรกสุด) — map ตรงไปที่ชื่อสุดท้ายเลย เผื่อบางระบบยังไม่เคยผ่านรอบ rename ก่อนหน้า
-        'Inbound + ASN + Put PB-01': 'รับสินค้าเข้า',
-        'Pick to QC + เตรียมของ': 'Deep QC',
-        'Put Back PB-02 ถึง PB-05': 'Return',
-        'Return + Put Back PB-02 ถึง PB-05': 'Return',
-        'Handling OUT + เตรียมของ': 'DEMO',
-        'Return + Put Back Bin เดิม': 'Return',
-        'สินค้ามือ1 Samsung (รับเข้า+ส่ง Rider เหมารวม)': 'Samsung มือ 1',
-        // ชื่อรอบก่อนหน้า (หลัง rename ครั้งที่แล้ว / หลังรวม "รับคืน") — map ไปชื่อใหม่ล่าสุด
-        'รับ ASN': 'รับสินค้าเข้า',
-        'เบิกไป QC': 'Deep QC',
-        'รับคืน': 'Return',
-        'รับคืน (PB-02 ถึง PB-05)': 'Return',
-        'รับคืนcustomer_demo': 'Return',
-        'เบิกไป Demo + หยิบสินค้า (Handling OUT)': 'DEMO',
-        'งานแพค กล่อง+Bubble ส่งหน้า': 'Packaging',
-        'ASN/Samsung มือ 1': 'Samsung มือ 1',
-      };
-      const needsUpdate = [];
-      state.activities.forEach((a, idx)=>{
-        let changed = false;
-        if(RENAME_MAP[a.name]){ a.name = RENAME_MAP[a.name]; changed = true; }
-        if(!a.sortOrder){
-          const def = DEFAULT_ACTIVITIES.find(d=>d.id===a.id);
-          a.sortOrder = def ? def.sortOrder : (100 + idx);
-          changed = true;
-        }
-        if(changed) needsUpdate.push(a);
-      });
-      if(needsUpdate.length){
-        await Promise.all(needsUpdate.map(a=>sb.from('activities').update(activityToRow(a)).eq('id', a.id)));
-      }
-
-      // one-time merge: รวม "รับคืน (PB-02 ถึง PB-05)" (p3) กับ "รับคืนcustomer_demo" (p5) เป็นกิจกรรมเดียวชื่อ "รับคืน"
-      // ราคาใหม่ = ผลรวมของราคาเดิมทั้ง 2 กิจกรรม (2.5+3.0=5.5) ไม่ใช่ค่าเฉลี่ย เพราะของที่เคยผ่านทั้ง 2 ขั้นตอนเคยถูกคิดเงินแยก 2 รอบ รวมเป็นขั้นตอนเดียวต้องคงยอดรวมเดิมไว้
-      // ย้าย item_records/work_logs ของ p5 มาที่ p3 ก่อนลบ p5 ทิ้ง
-      var mergedActivityRemap = null;
-      var mue1RemapPending = []; // รายการ {from,to} activity id ที่ต้องย้าย record เก่า (ที่เคยติ๊ก Samsung มือ1) ไปกิจกรรมใหม่ — ทำทีหลังตอน state.itemRecords โหลดเสร็จ
-      const mergeSurvivor = state.activities.find(a=>a.id==='p3');
-      const mergeAbsorbed = state.activities.find(a=>a.id==='p5');
-      if(mergeSurvivor && mergeAbsorbed){
-        const mergedPrice = (Number(mergeSurvivor.price)||0) + (Number(mergeAbsorbed.price)||0); // ผลรวมราคา ไม่ใช่ค่าเฉลี่ย
-        const totalVol = (Number(mergeSurvivor.monthlyVolume)||0) + (Number(mergeAbsorbed.monthlyVolume)||0);
-        mergeSurvivor.name = 'Return';
-        mergeSurvivor.price = Math.round(mergedPrice*100)/100;
-        mergeSurvivor.monthlyVolume = totalVol;
-
-        await sbw(sb.from('activities').update(activityToRow(mergeSurvivor)).eq('id', mergeSurvivor.id));
-        await sbw(sb.from('item_records').update({ activity_id: mergeSurvivor.id }).eq('activity_id', mergeAbsorbed.id));
-        await sbw(sb.from('work_logs').update({ activity_id: mergeSurvivor.id }).eq('activity_id', mergeAbsorbed.id));
-        await sbw(sb.from('activities').delete().eq('id', mergeAbsorbed.id));
-
-        state.activities = state.activities.filter(a=>a.id!==mergeAbsorbed.id);
-        mergedActivityRemap = { from: mergeAbsorbed.id, to: mergeSurvivor.id }; // ใช้ remap ให้ state.itemRecords/state.logs ทีหลัง (ยังโหลดไม่เสร็จตอนนี้)
-      }
-
-      // one-time: สร้างกิจกรรมแยกต่างหากสำหรับ "รับสินค้าเข้า (Samsung มือ1)" และ "DEMO (Samsung มือ1)" — เดิมใช้วิธี tag บน record เดียวกับกล่อง 1 ซึ่งไม่มีช่อง import ของตัวเอง เปลี่ยนเป็นกิจกรรมแยกเต็มรูปแบบ มี IMEI/import เป็นของตัวเอง (ราคาล็อกตามกล่อง 1 เสมอ ไม่ได้แก้แยก)
-      // ครอบ try/catch แยกต่างหาก กันไม่ให้ feature นี้พังแล้วทำให้ทั้งแอปโหลดไม่ขึ้น (activities/logs/storage ส่วนอื่นต้องโหลดได้ต่อแม้จุดนี้มีปัญหา)
-      try{
-        const actP1forSplit = state.activities.find(a=>a.id==='p1');
-        const actP4forSplit = state.activities.find(a=>a.id==='p4');
-        const needP1s = actP1forSplit && !state.activities.find(a=>a.id==='p1s');
-        const needP4s = actP4forSplit && !state.activities.find(a=>a.id==='p4s');
-        const newSplitActivities = [];
-        if(needP1s) newSplitActivities.push({ id:'p1s', name:'รับสินค้าเข้า (Samsung มือ 1)', price:actP1forSplit.price, standardWorkers:actP1forSplit.standardRegularWorkers||2, minutesPerUnit:actP1forSplit.minutesPerUnit||1, monthlyVolume:0, standardRegularWorkers:actP1forSplit.standardRegularWorkers||0, standardTempWorkers:actP1forSplit.standardTempWorkers||0, sortOrder:10 });
-        if(needP4s) newSplitActivities.push({ id:'p4s', name:'DEMO (Samsung มือ 1)', price:actP4forSplit.price, standardWorkers:actP4forSplit.standardRegularWorkers||2, minutesPerUnit:actP4forSplit.minutesPerUnit||1, monthlyVolume:0, standardRegularWorkers:actP4forSplit.standardRegularWorkers||0, standardTempWorkers:actP4forSplit.standardTempWorkers||0, sortOrder:11 });
-        if(newSplitActivities.length){
-          await sbw(sb.from('activities').insert(newSplitActivities.map(activityToRow)));
-          state.activities = state.activities.concat(newSplitActivities);
-        }
-        // ย้าย item_records เก่าที่เคยติ๊ก "Samsung มือ1" ไว้ใต้ p1/p4 มาอยู่ใต้ p1s/p4s ให้อัตโนมัติ (ทำครั้งเดียวตอนสร้างกิจกรรมใหม่)
-        if(needP1s) mue1RemapPending.push({ from:'p1', to:'p1s' });
-        if(needP4s) mue1RemapPending.push({ from:'p4', to:'p4s' });
-      }catch(e){
-        console.error('Samsung มือ1 split-activity migration failed:', e);
-        showToast('สร้างกิจกรรม Samsung มือ1 แยกไม่สำเร็จ: ' + (e && e.message ? e.message : 'ไม่ทราบสาเหตุ') + ' — เปิดหน้าเว็บใหม่เพื่อลองอีกครั้ง');
-      }
-      state.activities.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
-    } else {
-      await sbw(sb.from('activities').insert(DEFAULT_ACTIVITIES.map(activityToRow)));
-      state.activities = DEFAULT_ACTIVITIES.map(a=>Object.assign({},a));
-      // p1s/p4s ถูก seed มาพร้อม DEFAULT_ACTIVITIES แล้ว จึงไม่ต้อง insert ซ้ำในกรณีตารางว่าง
+    // Add the new catalogue without renaming, deleting, or reclassifying historical rows.
+    if(actRes.error) throw actRes.error;
+    state.activities = (actRes.data||[]).map(rowToActivity);
+    const missing = DEFAULT_ACTIVITIES.filter(d=>!state.activities.some(a=>a.id===d.id));
+    if(missing.length){
+      await sbw(sb.from('activities').upsert(missing.map(activityToRow), {onConflict:'id', ignoreDuplicates:true}));
+      const refreshed = await sbw(sb.from('activities').select('*'));
+      state.activities = (refreshed.data||[]).map(rowToActivity);
     }
+    state.activities.sort((a,b)=>(a.sortOrder||0)-(b.sortOrder||0));
 
     state.logs = (logRes.data||[]).map(rowToLog);
     state.itemRecords = (itemRes.data||[]).map(rowToItemRecord);
-    if(mergedActivityRemap){
-      state.itemRecords.forEach(r=>{ if(r.activityId===mergedActivityRemap.from) r.activityId = mergedActivityRemap.to; });
-      state.logs.forEach(l=>{ if(l.activityId===mergedActivityRemap.from) l.activityId = mergedActivityRemap.to; });
-    }
-    for(const {from, to} of mue1RemapPending){
-      try{
-        // Migrate on the server even when the current page skipped IMEI loading.
-        await sbw(sb.from('item_records').update({activity_id:to}).eq('activity_id',from).eq('is_samsung_mue1', true));
-        state.itemRecords.forEach(r=>{ if(r.activityId===from && r.isSamsungMue1) r.activityId=to; });
-      }catch(e){ console.error(`ย้าย record ${from} -> ${to} ไม่สำเร็จ (จะลองใหม่รอบหน้าที่โหลด):`, e); }
-    }
     state.storageAgeing = (ageingRes.data||[]).map(rowToAgeing);
     state.storageBillingLocks = (lockRes.data||[]).map(rowToBillingLock);
 
@@ -813,7 +768,7 @@ function renderDashboard(){
 function renderPricing(){
   const rates = staffCalc();
   const ts = state.timeSettings;
-  const rows = state.activities.map(a=>{
+  const rows = activeActivities().map(a=>{
     const regularCount = Number(a.standardRegularWorkers||0);
     const tempCount = Number(a.standardTempWorkers||0);
     const totalWorkers = regularCount + tempCount;
@@ -1012,7 +967,7 @@ function renderEmployees(){
 }
 
 function renderLog(){
-  const actOptions = state.activities.map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
+  const actOptions = activeActivities().map(a=>`<option value="${a.id}">${a.name}</option>`).join('');
   const logDateFilter = state.logHistoryDateFilter || 'all';
   const filteredLogs = logDateFilter === 'all' ? state.logs : state.logs.filter(l=>l.date === logDateFilter);
   const availableLogDates = [...new Set(state.logs.map(l=>l.date))].sort((a,b)=>b.localeCompare(a));
@@ -1053,7 +1008,7 @@ function renderLog(){
     <div class="hint" style="margin-bottom:10px">ทำงานหลายรอบในวันเดียวกัน กิจกรรมเดียวกัน? บันทึกแยกทีละรอบได้เลย กด "บันทึก" แล้วกรอกรอบถัดไปต่อได้ทันที (วันที่/กิจกรรมจะค้างไว้ให้)</div>
     <div class="row">
       <input id="l-date" type="date" value="${state.lastLogDate || todayStr()}">
-      <select id="l-activity">${state.activities.map(a=>`<option value="${a.id}" ${state.lastLogActivity===a.id?'selected':''}>${a.name}</option>`).join('')}</select>
+      <select id="l-activity">${activeActivities().map(a=>`<option value="${a.id}" ${state.lastLogActivity===a.id?'selected':''}>${a.name}</option>`).join('')}</select>
       <div><div class="hint" style="margin-bottom:3px">จำนวนงานที่ได้ (unit)</div><input id="l-volume" type="number" style="width:150px"></div>
     </div>
     <div class="row">
@@ -1121,12 +1076,7 @@ function computeProcessBoxes(billingStart, billingEnd){
   const actP6 = state.activities.find(a=>a.id==='p6'); // Packaging
 
   // ---- กล่องที่ 1: Process ทั่วไป ----
-  const box1Items = [
-    actP1 && { name: actP1.name, price: actP1.price, qty: qtyOf(actP1) },
-    actP2 && { name: actP2.name, price: actP2.price, qty: qtyOf(actP2) },
-    actP3 && { name: actP3.name, price: actP3.price, qty: qtyOf(actP3) },
-    actP4 && { name: actP4.name, price: actP4.price, qty: qtyOf(actP4) },
-  ].filter(Boolean);
+  const box1Items = primaryActivities().map(a=>({name:a.name, price:a.price, qty:qtyOf(a)}));
   const box1Total = box1Items.reduce((s,x)=>s+x.price*x.qty, 0);
 
   // ---- กล่องที่ 3: Samsung มือ 1 (กิจกรรมแยกเป็นของตัวเอง มี IMEI/import เป็นของตัวเอง) + Packaging (log รวมกล่องเดียวกันเฉยๆ ไม่เกี่ยวกับ Samsung) ----
@@ -1139,6 +1089,17 @@ function computeProcessBoxes(billingStart, billingEnd){
   const box3Total = box3Items.reduce((s,x)=>s+x.price*x.qty, 0);
 
   return { box1Items, box1Total, box3Items, box3Total };
+}
+
+function legacyBillingRecords(){
+  const inv=state.invoiceInfo;
+  return state.itemRecords.filter(r=>RETIRED_ACTIVITY_IDS.has(r.activityId)
+    && (!inv.billingStart || r.date>=inv.billingStart)
+    && (!inv.billingEnd || r.date<=inv.billingEnd));
+}
+function legacyBillingNotice(){
+  const count=legacyBillingRecords().length;
+  return count ? `<div class="hint" role="status">พบรายการกิจกรรมเดิม ${count} รายการในรอบบิลนี้ ประวัติยังอยู่ครบ แต่ยังไม่ได้จัดเข้ารายการใหม่ จึงระงับการพิมพ์ใบแจ้งหนี้รอบนี้เพื่อป้องกันยอดตกหล่น</div>` : '';
 }
 
 function buildInvoiceHTML(){
@@ -1245,7 +1206,7 @@ function buildInvoiceHTML(){
 // one extra printed page per activity, listing every IMEI recorded for it within the billing period
 // pre-compute which activities actually have IMEI records in this billing period (shared by page-count calc and page rendering)
 function invoiceActivityDetailData(inv){
-  return state.activities.map(a=>{
+  return activeActivities().map(a=>{
     const records = state.itemRecords.filter(r=>
       r.activityId === a.id &&
       (!inv.billingStart || r.date >= inv.billingStart) &&
@@ -1397,37 +1358,6 @@ function buildInvoiceStorageDetailPage(pageNo, totalPages, ageingBill, billingLa
     </div>`;
 }
 
-// Rate proposal transcribed from the user's labour-cost reference.
-// Separate from persisted activity prices until legacy Return records are mapped.
-const LABOUR_RATE_PROPOSAL = [
-  {name:'การรับสินค้าเข้า', regular:0, temp:2, minutes:2, cost:6.91},
-  {name:'การเตรียมสินค้าให้ฝ่าย QC', regular:0, temp:2, minutes:1, cost:3.46},
-  {name:'การรับคืนสินค้าจาก QC เข้า Bin Location พร้อมขาย', regular:0, temp:2, minutes:1, cost:3.46},
-  {name:'การเตรียมสินค้าให้ฝ่ายขาย', regular:1, temp:2, minutes:2, cost:12.01},
-  {name:'การรับสินค้าคืนจากฝ่ายขาย', regular:0, temp:2, minutes:1, cost:3.46}
-];
-function proposedSellingPrice(cost){
-  // Round UP to the nearest satang so the margin remains at least 35%.
-  return Math.ceil(Math.round(cost * 100) * 100 / 65) / 100;
-}
-function renderLabourRateProposal(){
-  const totalCost = LABOUR_RATE_PROPOSAL.reduce((sum,r)=>sum+r.cost,0);
-  const totalPrice = LABOUR_RATE_PROPOSAL.reduce((sum,r)=>sum+proposedSellingPrice(r.cost),0);
-  return `
-    <section class="rate-proposal" aria-labelledby="rate-proposal-title">
-      <h2 id="rate-proposal-title">Rate Card — ราคาขายเสนอใหม่</h2>
-      <p>กิจกรรมคลังสินค้าโทรศัพท์มือถือมือสอง · เป้าหมายกำไรขั้นต้น 35% ของราคาขาย</p>
-      <div class="hint">ราคาขาย = ต้นทุนแรงงาน ÷ 0.65 ปัดขึ้นเป็น 2 ตำแหน่ง เพื่อให้ได้อย่างน้อย 35% ก่อนค่าใช้จ่ายอื่นและ VAT</div>
-      <div class="rate-proposal-scroll"><table>
-        <thead><tr><th>กิจกรรม</th><th class="num">ประจำ<br>(คน)</th><th class="num">จ้างเสริม<br>(คน)</th><th class="num">เวลาเฉลี่ย<br>(นาที/ชิ้น)</th><th class="num">ต้นทุนแรงงาน<br>(บาท/ชิ้น)</th><th class="num">ราคาขายใหม่<br>(บาท/ชิ้น)</th></tr></thead>
-        <tbody>${LABOUR_RATE_PROPOSAL.map(r=>`<tr><td>${r.name}</td><td class="num">${r.regular || '-'}</td><td class="num">${r.temp}</td><td class="num">${r.minutes}</td><td class="num">${fmt(r.cost)}</td><td class="num proposed-price">${fmt(proposedSellingPrice(r.cost))}</td></tr>`).join('')}</tbody>
-        <tfoot><tr><td colspan="4">รวม เมื่อผ่านครบทั้ง 5 กิจกรรม อย่างละ 1 ครั้ง</td><td class="num">${fmt(totalCost)}</td><td class="num proposed-price">${fmt(totalPrice)}</td></tr></tfoot>
-      </table></div>
-      <p class="hint">อ้างอิงต้นทุนแรงงานตามตารางที่ให้มา ไม่รวมวัสดุ ค่าเสื่อม และค่าใช้จ่ายอื่น จึงยังไม่ใช่กำไรขั้นต้น 35% จากต้นทุนรวม</p>
-      <p class="rate-proposal-status"><b>ยังไม่ใช้กับใบแจ้งหนี้:</b> รอกำหนดวันเริ่มใช้ราคาและวิธีแยก Return เดิมเป็นรับคืน QC / รับคืนฝ่ายขาย ตารางด้านล่างยังใช้ราคาที่บันทึกอยู่</p>
-    </section>`;
-}
-
 function renderRateCard(){
   const countByActivity = {};
   state.itemRecords.forEach(r=>{ countByActivity[r.activityId] = (countByActivity[r.activityId]||0) + (Number(r.qty)||1); });
@@ -1524,12 +1454,9 @@ function renderRateCard(){
   const actP6 = state.activities.find(a=>a.id==='p6');
 
   // ---- กล่องที่ 1: การ์ดแก้ไขได้ปกติ ----
-  const box1CardsHtml = [
-    actP1 && activityCardHtml(actP1, { boxTag:'กล่อง 1', qty: (boxes.box1Items.find(x=>x.name===actP1.name)?.qty ?? 0) }),
-    actP2 && activityCardHtml(actP2, { boxTag:'กล่อง 1', qty: (boxes.box1Items.find(x=>x.name===actP2.name)?.qty ?? 0) }),
-    actP3 && activityCardHtml(actP3, { boxTag:'กล่อง 1', qty: (boxes.box1Items.find(x=>x.name===actP3.name)?.qty ?? 0) }),
-    actP4 && activityCardHtml(actP4, { boxTag:'กล่อง 1', qty: (boxes.box1Items.find(x=>x.name===actP4.name)?.qty ?? 0) }),
-  ].filter(Boolean).join('');
+  const box1CardsHtml = primaryActivities().map(a=>activityCardHtml(a, {
+    boxTag:'กล่อง 1', qty:boxes.box1Items.find(x=>x.name===a.name)?.qty ?? 0
+  })).join('');
 
   // ---- กล่องที่ 3: Samsung มือ 1 (p1s/p4s เป็นกิจกรรมแยกเต็มรูปแบบ มี IMEI/import เป็นของตัวเอง ราคาล็อกตามกล่อง 1) + Packaging (log รวมกล่องเดียวกัน ไม่เกี่ยวกับ Samsung) ----
   const box3CardsHtml = [
@@ -1580,8 +1507,10 @@ function renderRateCard(){
   `;
 
   return `
-    ${renderLabourRateProposal()}
-    <h2>ข้อมูลเรียกเก็บปัจจุบัน</h2>
+    <h2>Rate Card — อัตราค่าบริการ</h2>
+    <p class="hint">ราคาเริ่มต้น 5 กิจกรรมใช้ต้นทุนแรงงาน ÷ 0.65 ปัดขึ้นเป็นสตางค์ เพื่อเป้าหมายส่วนต่าง 35% ก่อนวัสดุและค่าใช้จ่ายอื่น ราคาเหล่านี้ใช้คำนวณรายการใหม่และใบแจ้งหนี้จริง</p>
+    ${legacyBillingNotice()}
+
     ${boxSummaryHtml}
     <h3>1) Process ทั่วไป — กล่อง 1</h3>
     <div class="hint" style="margin-bottom:14px;padding:10px;background:var(--panel-2);border-radius:8px;border-left:3px solid var(--blue)">
@@ -2206,7 +2135,7 @@ async function exportToExcel(){
   XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(buildSummaryRows(l=>l.date.slice(0,7))), 'สรุปกิจกรรม-รายเดือน');
 
   // 5. Rate Card
-  const rcRows = state.activities.map(a=>({
+  const rcRows = activeActivities().map(a=>({
     'บริการ': a.name, 'UOM':'THB/Unit', 'ราคา/ชิ้น': a.price, 'Volume/เดือน': a.monthlyVolume||0,
     'ราคารวม': Number((a.price*(a.monthlyVolume||0)).toFixed(2))
   }));
@@ -2517,7 +2446,10 @@ function attachHandlers(){
   const invIncludeItemDetail = document.getElementById('inv-include-item-detail');
   if(invIncludeItemDetail) invIncludeItemDetail.onchange = ()=>{ state.invoiceInfo.includeItemDetail = invIncludeItemDetail.value === 'yes'; saveInvoiceInfo(); render(); };
   const exportInvoiceBtn = document.getElementById('export-invoice-pdf');
-  if(exportInvoiceBtn) exportInvoiceBtn.onclick = ()=>{ window.print(); };
+  if(exportInvoiceBtn) exportInvoiceBtn.onclick = ()=>{
+    if(legacyBillingRecords().length){ showToast('ยังมีรายการกิจกรรมเดิมในรอบบิล กรุณาจัดประเภทรายการก่อนออกใบแจ้งหนี้'); return; }
+    window.print();
+  };
 
   document.querySelectorAll('details[id^="item-details-"]').forEach(d=>{
     d.addEventListener('toggle', ()=>{
